@@ -3,14 +3,14 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "dvm">
 <!ENTITY author    "alexphillips-dev">
-<!ENTITY version   "2026.11.04.11">
+<!ENTITY version   "2026.11.04.12">
 <!ENTITY launch    "Settings/DVMsettings">
-<!ENTITY gitURL    "https://raw.githubusercontent.com/alexphillips-dev/Data-Volume-Monitor/main">
+<!ENTITY gitURL    "https://raw.githubusercontent.com/alexphillips-dev/Data-Volume-Monitor/dev">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
 <!ENTITY pkgURL    "&gitURL;/packages">
 <!ENTITY plgPATH   "/boot/config/plugins/&name;">
-<!ENTITY plgNAME   "dvm-2026.11.04.11-x86_64-1">
-<!ENTITY plgMD5    "ef215974598719c7678202298253bb17">
+<!ENTITY plgNAME   "dvm-2026.11.04.12-x86_64-1">
+<!ENTITY plgMD5    "c9bdf81fb7ef79b925231c22d9604576">
 <!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
 ]>
 
@@ -18,6 +18,9 @@
 
 <CHANGES>
 ## Data Volume Monitor
+###2026.11.04.12
+- development: synchronize the first stable release 2026.11.04.11 and its comprehensive release documentation.
+- build: restore dev-channel installer/download/update URLs and packaged Development version metadata after stable promotion; retain the same application code.
 ###2026.11.04.11
 - release: first Stable release of the Data Volume Monitor continuation maintained by alexphillips-dev; includes all audited fixes and development improvements.
 - update: publish canonical main-channel installer/download/update URLs and installed Stable version metadata.
