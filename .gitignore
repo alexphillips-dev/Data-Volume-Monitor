@@ -1,0 +1,74 @@
+# Python environments, caches, and test reports
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage/
+
+# Local JavaScript tooling; shipped plugin JS remains tracked
+node_modules/
+.npm/
+
+# Local credentials and machine-specific settings
+.env
+.env.*
+!.env.example
+!.env.sample
+.vscode/
+.idea/
+
+# Local AI-agent instructions and tool state
+AGENTS.md
+AGENTS.override.md
+CLAUDE.md
+GEMINI.md
+.codex/
+.claude/
+.cursor/
+.agents/
+.agent/
+.aider*
+.cursorrules
+.windsurfrules
+.github/copilot-instructions.md
+.github/instructions/
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+*.rej
+
+# Temporary builds, failed-transaction recovery copies, and logs
+.dvm-build-*/
+.dvm-stage-*
+.dvm-editor.lock
+*.tmp
+*.temp
+*.log
+
+# Runtime traffic databases and transition state are never source artifacts
+vnstat.db
+vnstat.db-*
+vnstat.db.*
+vnstat.previous.tar
+dvm.cfg
+*_notified
+
+# Local diagnostic exports
+/diagnostics/
+/support-bundles/
+
+# Keep plugin manifests/icons, source/default.cfg, tests, and the required
+# packages/*.txz and archive/*.txz checksum sidecars under version control.

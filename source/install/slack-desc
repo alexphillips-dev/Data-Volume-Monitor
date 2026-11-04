@@ -1,0 +1,12 @@
+     |-----handy-ruler------------------------------------------------------|
+dvm: Data Volume Monitor
+dvm:
+dvm: vnStat is a network traffic monitor for Linux that keeps a log of
+dvm: daily network traffic for the selected interface(s). vnStat isn't a
+dvm: packetsniffer. The traffic information is analyzed from the /proc
+dvm: filesystem so vnStat can be used without root permissions.
+dvm: This program is open source (GPL).
+dvm:
+dvm: maintained by alexphillips-dev (x86_64)
+dvm: intended for use on UNRAID installations WITHOUT ANY WARRANTIES
+dvm:

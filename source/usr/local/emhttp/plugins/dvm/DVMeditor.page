@@ -1,0 +1,183 @@
+Menu="DVMsettings:2"
+Title="DVM Configuration Editor"
+Tag="cog"
+Markdown="false"
+---
+<?
+/* Copyright Derek Macias (parts of code from NUT package)
+ * Copyright macester (parts of code from NUT package)
+ * Copyright gfjardim (parts of code from NUT package)
+ * Copyright SimonF (parts of code from NUT package)
+ * Copyright Mohamed Emad (icon from vnstat-client package)
+ * Copyright desertwitch
+ * Modified 2026-11-04: Data Volume Monitor naming and repository transition.
+ *
+ * Copyright Dan Landon
+ * Copyright Bergware International
+ * Copyright Lime Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License 2
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ */
+?>
+<?require_once '/usr/local/emhttp/plugins/dvm/include/dvm_config.php';?>
+<link type="text/css" rel="stylesheet" href="<?=autov('/webGui/styles/jquery.filetree.css');?>">
+<link type="text/css" rel="stylesheet" href="<?=autov('/plugins/dvm/css/codemirror.min.css');?>">
+<link type="text/css" rel="stylesheet" href="<?=autov('/plugins/dvm/css/dracula.min.css');?>">
+<style type="text/css">
+    .CodeMirror { border: 1px solid #eee; cursor: text; margin-top: 15px; margin-bottom: 10px; }
+    .CodeMirror pre.CodeMirror-placeholder { color: #999; }
+    .errortext {color: #EF3D47;display: none;}
+    .fileTree {color:#486dba;width:305px;max-height:150px;overflow:scroll;position:absolute;z-index:100;display:none;}
+</style>
+
+<span style="float:right;margin-right:10px"><a href="https://humdi.net/vnstat/man/vnstat.conf.html" target="_blank" title="DVM Configuration Manual"><i class="fa fa-file-text-o"></i> <u>Configuration Manual</u></a></span>
+
+<div style="color:red;"><strong>WARNING:</strong></div>
+<div>By default the Data Volume Monitor comes pre-configured for the smoothest possible user experience.</div>
+<div>More advanced users can tune configuration parameters and user scripts using the below DVM Configuration Editor.</div>
+<div><strong><u>Be advised that careless shell scripting can potentially wreak havoc on your system - do read the manuals and take care.</u></strong></div>
+
+<br>
+
+<form id="editform" method="POST">
+<img id="editfolder" style="cursor:pointer;margin-left: 10px;" src="/webGui/images/explore.png" >
+
+<input id="editfile" type="text" name="editfile" value="" readonly="" data-picktop="/etc/vnstat" data-pickcloseonfile="true" data-pickfilter="conf,sh" data-pickroot="/etc/vnstat" data-pickfolders="false" required="required" >
+
+<textarea id="editdata" name="editdata" placeholder="Select a configuration file to modify."></textarea>
+<p id="editstatus" role="status" aria-live="polite"></p>
+<input type="hidden" name="commit" value="1" />
+<dl>
+    <dt></dt>
+    <dd>
+        <span>
+            <input type="button" value="Save" id="btnSubmit" title="Save the configuration changes." disabled />
+            <input type="button" value="Cancel" id="btnCancel" />
+        </span>
+    </dd>
+</dl>
+</form>
+
+<script src="<?=autov('/webGui/javascript/jquery.filetree.js');?>"></script>
+<script src="<?=autov('/plugins/dvm/js/codemirror.min.js');?>"></script>
+<script src="<?=autov('/plugins/dvm/js/autorefresh.min.js');?>"></script>
+<script src="<?=autov('/plugins/dvm/js/properties.min.js');?>"></script>
+
+<script type="text/javascript">
+$(function(){
+    $('#btnCancel').click(function() {
+        if (!confirmLeaving('leave the editor')) return;
+        allowNavigation = true;
+        location = '/Settings/DVMsettings';
+    });
+
+    var editor = CodeMirror.fromTextArea($('#editdata')[0], {
+        theme: '<?=($display["theme"] == 'white' || $display["theme"] == 'azure') ? "default" : "dracula";?>',
+        mode: 'properties',
+        lineNumbers: true,
+        autoRefresh: true
+    });
+
+    editor.setSize(null, 600);
+
+    var loadGeneration = 0;
+    var loadedFile = null;
+    var saving = false;
+    var loadedSnapshot = '';
+    var allowNavigation = false;
+
+    function backendError(data, fallback) {
+        return data && typeof data.error === 'string' && data.error.trim() ? data.error : fallback;
+    }
+
+    function hasUnsavedChanges() {
+        return loadedFile !== null && editor.getValue() !== loadedSnapshot;
+    }
+
+    function confirmLeaving(action) {
+        if (saving) return window.confirm('A save request is still in progress. Its result may not be visible if you '+action+'. Continue?');
+        return !hasUnsavedChanges() || window.confirm('Discard unsaved changes to '+loadedFile+' and '+action+'?');
+    }
+
+    window.addEventListener('beforeunload', function (event) {
+        if (!allowNavigation && (saving || hasUnsavedChanges())) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+    });
+
+    function updateSaveState() {
+        $('#btnSubmit').prop('disabled', saving || loadedFile === null || loadedFile !== $('#editfile').val());
+    }
+
+    function loadSelectedFile() {
+        var selectedFile = $('#editfile').val();
+        if (loadedFile !== null && !confirmLeaving('change files')) {
+            $('#editfile').val(loadedFile);
+            return;
+        }
+        var generation = ++loadGeneration;
+        loadedFile = null;
+        editor.setValue('');
+        editor.setOption('readOnly', true);
+        $('#editstatus').text('Loading configuration...');
+        updateSaveState();
+
+        $.getJSON('/plugins/dvm/include/dvm_edit.php', {editfile: selectedFile}, function (data) {
+            if (generation !== loadGeneration || selectedFile !== $('#editfile').val()) return;
+            if (typeof data !== 'string') {
+                $('#editstatus').text(backendError(data, 'Unable to load this configuration file. Select it again to retry.'));
+                return;
+            }
+            editor.setValue(data);
+            editor.setOption('readOnly', false);
+            loadedFile = selectedFile;
+            loadedSnapshot = editor.getValue();
+            $('#editstatus').text('');
+            updateSaveState();
+        }).fail(function (request) {
+            if (generation !== loadGeneration || selectedFile !== $('#editfile').val()) return;
+            $('#editstatus').text(backendError(request.responseJSON, 'Unable to load this configuration file. Select it again to retry.'));
+        });
+    }
+
+    $('#editfile').fileTreeAttach(null, null, function(file) {
+        $('#editfile').val(file);
+    });
+
+    $('#editfile').on('change', loadSelectedFile);
+
+    $('#editfile').val("/etc/vnstat/vnstat.conf");
+    loadSelectedFile();
+
+    $('#btnSubmit').click(function () {
+        if (saving || loadedFile === null || loadedFile !== $('#editfile').val()) return;
+        editor.save();
+        var saveData = $('#editform').serializeArray();
+        var saveFile = loadedFile;
+        var saveSnapshot = editor.getValue();
+        var saveGeneration = loadGeneration;
+        saving = true;
+        updateSaveState();
+        $.post('/plugins/dvm/include/dvm_save.php', saveData, function (data) {
+            if (data && data.success === true && data.saved === saveFile) {
+                if (loadedFile === saveFile && loadGeneration === saveGeneration) loadedSnapshot = saveSnapshot;
+                swal({title:'Configuration Saved', text:saveFile+'\n\nIt will be active on next DVM restart.', html:false, timer:3500, showConfirmButton:false, type:'success'});
+            } else {
+                swal({title:'Configuration Error', text:backendError(data, 'Unable to confirm that '+saveFile+' was saved. Reload the file before retrying.'), html:false, type:'error'});
+            }
+        }, 'json').fail(function (request) {
+            swal({title:'Configuration Error', text:backendError(request.responseJSON, 'The save request for '+saveFile+' failed. Check the file before retrying.'), html:false, type:'error'});
+        }).always(function () {
+            saving = false;
+            updateSaveState();
+        });
+    });
+});
+</script>

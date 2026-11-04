@@ -1,0 +1,6 @@
+{
+  "schema": 1,
+  "channel": "main",
+  "version": "2026.11.04.11",
+  "plugin_url": "https://raw.githubusercontent.com/alexphillips-dev/Data-Volume-Monitor/main/plugin/dvm.plg"
+}

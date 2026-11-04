@@ -1,0 +1,10 @@
+#!/usr/bin/php
+<?php
+require_once __DIR__ . '/../include/dvm_config_guard.php';
+try {
+    $paths = dvm_config_effective_paths($argv[1] ?? '/etc/vnstat/vnstat.conf');
+    echo $paths['DatabaseDir'] . "\n" . $paths['PidFile'] . "\n";
+} catch (Throwable $error) {
+    fwrite(STDERR, $error->getMessage() . "\n");
+    exit(1);
+}

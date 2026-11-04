@@ -1,0 +1,312 @@
+Menu="Buttons:198"
+Link="nav-user"
+---
+<?
+/* Copyright Derek Macias (parts of code from NUT package)
+ * Copyright macester (parts of code from NUT package)
+ * Copyright gfjardim (parts of code from NUT package)
+ * Copyright SimonF (parts of code from NUT package)
+ * Copyright Mohamed Emad (icon from vnstat-client package)
+ * Copyright desertwitch
+ * Modified 2026-11-04: Data Volume Monitor naming and repository transition.
+ *
+ * Copyright Dan Landon
+ * Copyright Bergware International
+ * Copyright Lime Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License 2
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ */
+?>
+<style type="text/css">
+#dvm_footer {
+    float: right;
+    <?if(version_compare(parse_ini_file('/etc/unraid-version')['version'],'7.1.99', '<')):?>
+    margin-right: 6px;
+    <?endif;?>
+}
+#dvm_footer.minimal {
+    font-family: bitstream;
+    font-size: 1.1rem;
+    <?if(version_compare(parse_ini_file('/etc/unraid-version')['version'],'7.1.99', '<')):?>
+    padding-right: 10px;
+    <?endif;?>
+}
+#dvm_footer > .fa-arrow-down {
+    color: #16a34a;
+}
+#dvm_footer > .fa-arrow-up {
+    color: #3b82f6;
+    margin-left: 0.9em;
+}
+.dvmorbiconactive {
+    margin-right: 4px;
+}
+.dvm-gray-orb {
+    color: lightgray;
+}
+.dvm_dashboard_status {
+    display: block;
+    font-size: 0.8em;
+}
+</style>
+<?require_once '/usr/local/emhttp/plugins/dvm/include/dvm_config.php';?>
+<script src="/plugins/dvm/js/dvm-poll.js?v=<?=hash_file('sha256', '/usr/local/emhttp/plugins/dvm/js/dvm-poll.js');?>"></script>
+
+<?if($dvm_config_running && $dvm_config_footer == "enable" && !empty($dvm_config_primary)):?>
+<?
+$dvm_footer_descr = "";
+switch ($dvm_config_footerformat) {
+    case '5':
+        $dvm_footer_descr = "Last 5 Minutes";
+        break;
+    case 'h':
+        $dvm_footer_descr = "Last Hour";
+        break;
+    case 'd':
+        $dvm_footer_descr = "Last Day";
+        break;
+    case 'm':
+        $dvm_footer_descr = "Last Month";
+        break;
+    case 'y':
+        $dvm_footer_descr = "Last Year";
+        break;
+}
+?>
+<script type="text/javascript">
+var dvmFooterPoll = null;
+function getDVMFooter() {
+    if (!dvmFooterPoll) dvmFooterPoll = DVMPoll.create({
+        key: 'getDVMFooter', timerStore: timers,
+        interval: <?=max(abs(isset($display['refresh']) ? $display['refresh'] : 0),(30 * 1000))?>,
+        requests: [{key:'footer', data:{mode:'footer'}}],
+        isActive: function () { return $('#dvm_footer').length > 0; },
+        render: function (responses) {
+            $('#dvm_footer').html(responses.footer.success.response)
+                .append('<span id="dvm_footer_status" role="status" aria-live="polite"></span>');
+        },
+        onState: function (state) {
+            var title = <?=json_encode(html_entity_decode($dvm_config_primary, ENT_QUOTES, 'UTF-8').' / '.$dvm_footer_descr, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);?>;
+            DVMPoll.annotate($('#dvm_footer'), null, state, title);
+            $('#dvm_footer_status').text(state.phase === 'stale' ? (state.lastSuccess === null ? ' Unavailable' : ' Stale') : '')
+                .attr('title', DVMPoll.statusText(state));
+        }
+    });
+    dvmFooterPoll.start();
+}
+$(function()
+{
+    var dvm_footer = $("<span id='dvm_footer' class='minimal'><span id='dvm_footer_status' role='status' aria-live='polite'></span></span>").attr('title', <?=json_encode(html_entity_decode($dvm_config_primary, ENT_QUOTES, 'UTF-8').' / '.$dvm_footer_descr, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);?>);
+
+    <?if(version_compare(parse_ini_file('/etc/unraid-version')['version'],'7.1.99', '>')):?>
+    dvm_footer.appendTo(".footer-right");
+    <?else:?>
+    dvm_footer.insertAfter("#footer > span#copyright");
+    <?endif;?>
+
+    getDVMFooter();
+});
+</script>
+<?endif;?>
+
+<?if(version_compare(parse_ini_file('/etc/unraid-version')['version'],'6.12.0-beta5', '>')):?>
+<?if(stripos($path, "dashboard") !== false && $dvm_config_running && $dvm_config_dashb == "enable" && !empty($dvm_config_primary)):?>
+<?
+$pluginname = "DVM";
+
+if(version_compare(parse_ini_file('/etc/unraid-version')['version'],'7.1.99', '>')) {
+// -------------------------------------------------------------
+// RESPONSIVE DASHBOARD
+// -------------------------------------------------------------
+$mytiles[$pluginname]['column2'] =
+<<<EOT
+<tbody id="tblDVMDash" title="_(DVM)_">
+    <tr>
+    <td>
+        <span class='tile-header'>
+        <span class='tile-header-left'>
+          <i class='fa fa-pie-chart f32'></i>
+          <div class='section'>
+              <h3 class='tile-header-main'>_(Data Volume Monitor)_</h3>
+              <span><span><i class="dvmorbicon"></i></span><span class="dvm_mini_dash"><em>Loading...</em></span><small class="dvm_dashboard_status" role="status" aria-live="polite"></small></span>
+          </div>
+        </span>
+        <span class='tile-header-right'>
+            <span class='tile-ctrl'>
+            </span>
+            <span class='tile-header-right-controls'>
+            <a href='/Settings/DVMsettings' title='_(Go to DVM Settings)_'>
+                <i class='fa fa-fw fa-cog control'></i>
+            </a>
+            </span>
+        </span>
+        </span>
+    </td>
+    </tr>
+    <tr><td><span class="w36">Last 5 Minutes:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_5rx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_5tx">-</span></span></td></tr>
+    <tr><td><span class="w36">Last Hour:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_hrx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_htx">-</span></span></td></tr>
+    <tr><td><span class="w36">Last Day:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_drx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_dtx">-</span></span></td></tr>
+    <tr><td><span class="w36">Last Month:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_mrx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_mtx">-</span></span></td></tr>
+    <tr><td><span class="w36">Last Year:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_yrx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_ytx">-</span></span></td></tr>
+</tbody>
+EOT;
+} else {
+// -------------------------------------------------------------
+// NON-RESPONSIVE DASHBOARD
+// -------------------------------------------------------------
+$mytiles[$pluginname]['column2'] =
+<<<EOT
+<tbody id="tblDVMDash" title="DVM">
+<tr>
+<td>
+<i class="fa fa-pie-chart f32"></i>
+<div class="section">Data Volume Monitor<br>
+<span><i class="dvmorbicon"></i></span><span class="dvm_mini_dash"><em>Loading...</em></span><small class="dvm_dashboard_status" role="status" aria-live="polite"></small>
+<br><br>
+</div>
+<a href="/Settings/DVMsettings" title="Go to DVM Settings"><i class="fa fa-fw fa-cog control"></i></a>
+</td></tr>
+<tr><td><span class="w36">Last 5 Minutes:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_5rx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_5tx">-</span></span></td></tr>
+<tr><td><span class="w36">Last Hour:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_hrx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_htx">-</span></span></td></tr>
+<tr><td><span class="w36">Last Day:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_drx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_dtx">-</span></span></td></tr>
+<tr><td><span class="w36">Last Month:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_mrx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_mtx">-</span></span></td></tr>
+<tr><td><span class="w36">Last Year:</span><span class="w26"><i class="fa fa-arrow-down"></i> <span class="dvm_yrx">-</span></span><span class="w26"><i class="fa fa-arrow-up"></i> <span class="dvm_ytx">-</span></span></td></tr>
+</tbody>
+EOT;
+}
+?>
+<script type="text/javascript">
+var dvmDashboardPoll = null;
+function getDVMDashboard() {
+    if (!dvmDashboardPoll) dvmDashboardPoll = DVMPoll.create({
+        key: 'getDVMDashboard', timerStore: timers,
+        interval: <?=max(abs(isset($display['refresh']) ? $display['refresh'] : 0),(30 * 1000))?>,
+        requests: [{key:'mini', data:{mode:'dashboardmini'}}, {key:'dashboard', data:{mode:'dashboard'}}],
+        isActive: function () { return $('.dvm_mini_dash').length > 0; },
+        validate: function (responses) { return responses.dashboard.success.response.split(';').length === 10; },
+        render: function (responses) {
+            $('.dvm_mini_dash').html(responses.mini.success.response);
+            var data = responses.dashboard;
+            var metrics = data.success.response.split(';');
+            $('.dvm_5rx').html(metrics[0]);
+            $('.dvm_5tx').html(metrics[1]);
+            $('.dvm_hrx').html(metrics[2]);
+            $('.dvm_htx').html(metrics[3]);
+            $('.dvm_drx').html(metrics[4]);
+            $('.dvm_dtx').html(metrics[5]);
+            $('.dvm_mrx').html(metrics[6]);
+            $('.dvm_mtx').html(metrics[7]);
+            $('.dvm_yrx').html(metrics[8]);
+            $('.dvm_ytx').html(metrics[9]);
+
+            if(data.success.response.includes("red-text")) {
+                $(".dvmorbicon").attr("class","dvmorbicon dvmorbiconactive fa fa-circle red-orb");
+                $(".dvmorbicon").attr("title","Monitored - Limits Exceeded");
+            } else if(data.success.response.includes("dvm-threshold-error")) {
+                $(".dvmorbicon").attr("class","dvmorbicon dvmorbiconactive fa fa-exclamation-triangle");
+                $(".dvmorbicon").attr("title","Threshold status unavailable");
+            } else if(data.success.response.includes("green-text")) {
+                $(".dvmorbicon").attr("class","dvmorbicon dvmorbiconactive fa fa-circle green-orb");
+                $(".dvmorbicon").attr("title","Monitored - Limits Not Exceeded");
+            } else {
+                $(".dvmorbicon").attr("class", "dvmorbicon dvmorbiconactive fa fa-circle dvm-gray-orb");
+                $(".dvmorbicon").attr("title","Monitored - No Limits");
+            }
+        },
+        onState: function (state) {
+            DVMPoll.annotate($('.dvm_mini_dash'), $('.dvm_dashboard_status'), state);
+        }
+    });
+    dvmDashboardPoll.start();
+}
+$(function(){
+    getDVMDashboard();
+});
+</script>
+<?endif;?>
+<?endif;?>
+
+<?if(version_compare(parse_ini_file('/etc/unraid-version')['version'],'6.12.0-beta6', '<')):?>
+<?if(stripos($path, "dashboard") !== false && $dvm_config_running && $dvm_config_dashb == "enable" && !empty($dvm_config_primary)):?>
+<table id="dvm_dashboard" style="display: none;">
+<thead sort=''><tr class='hidden'><td></td><td colspan='3'></td></tr></thead>
+<tbody sort='' class='sortable'>
+<tr><td></td><td colspan='3' class='next'><i class='icon-diagnostics'></i><div class='section'>Data Volume Monitor<br>
+<span><i class="dvmorbicon"></i></span><span class="dvm_mini_dash"><em>Loading...</em></span><small class="dvm_dashboard_status" role="status" aria-live="polite"></small><br><br></div>
+<i class='fa fa-fw chevron' id='dvm_view' onclick='toggleChevron("dvm_view",0)'></i>
+<a href='/Dashboard/DVMsettings' title='Go to DVM Settings'><i class='fa fa-fw fa-cog chevron'></i></a>
+</td><td></td></tr>
+<tr class='dvm_view'><td></td><td><span>Last 5 Minutes:</span></td><td><span><i class="ups fa fa-arrow-down"></i> <span class="dvm_5rx">-</span></span></td><td><span><i class="ups fa fa-arrow-up"></i> <span class="dvm_5tx">-</span></span></td><td></td></tr>
+<tr class='dvm_view'><td></td><td><span>Last Hour:</span></td><td><span><i class="ups fa fa-arrow-down"></i> <span class="dvm_hrx">-</span></span></td><td><span><i class="ups fa fa-arrow-up"></i> <span class="dvm_htx">-</span></span></td><td></td></tr>
+<tr class='dvm_view'><td></td><td><span>Last Day:</span></td><td><span><i class="ups fa fa-arrow-down"></i> <span class="dvm_drx">-</span></span></td><td><span><i class="ups fa fa-arrow-up"></i> <span class="dvm_dtx">-</span></span></td><td></td></tr>
+<tr class='dvm_view'"><td></td><td><span>Last Month:</span></td><td><span><i class="ups fa fa-arrow-down"></i> <span class="dvm_mrx">-</span></span></td><td><span><i class="ups fa fa-arrow-up"></i> <span class="dvm_mtx">-</span></span></td><td></td></tr>
+<tr class='dvm_view'"><td></td><td><span>Last Year:</span></td><td><span><i class="ups fa fa-arrow-down"></i> <span class="dvm_yrx">-</span></span></td><td><span><i class="ups fa fa-arrow-up"></i> <span class="dvm_ytx">-</span></span></td><td></td></tr>
+</tbody>
+</table>
+<script type="text/javascript">
+var dvmDashboardPoll = null;
+function getDVMDashboard() {
+    if (!dvmDashboardPoll) dvmDashboardPoll = DVMPoll.create({
+        key: 'getDVMDashboard', timerStore: timers,
+        interval: <?=max(abs(isset($display['refresh']) ? $display['refresh'] : 0),(30 * 1000))?>,
+        requests: [{key:'mini', data:{mode:'dashboardmini'}}, {key:'dashboard', data:{mode:'dashboard'}}],
+        isActive: function () { return $('.dvm_mini_dash').length > 0; },
+        validate: function (responses) { return responses.dashboard.success.response.split(';').length === 10; },
+        render: function (responses) {
+            $('.dvm_mini_dash').html(responses.mini.success.response);
+            var data = responses.dashboard;
+            var metrics = data.success.response.split(';');
+            $('.dvm_5rx').html(metrics[0]);
+            $('.dvm_5tx').html(metrics[1]);
+            $('.dvm_hrx').html(metrics[2]);
+            $('.dvm_htx').html(metrics[3]);
+            $('.dvm_drx').html(metrics[4]);
+            $('.dvm_dtx').html(metrics[5]);
+            $('.dvm_mrx').html(metrics[6]);
+            $('.dvm_mtx').html(metrics[7]);
+            $('.dvm_yrx').html(metrics[8]);
+            $('.dvm_ytx').html(metrics[9]);
+
+            if(data.success.response.includes("red-text")) {
+                $(".dvmorbicon").attr("class","dvmorbicon dvmorbiconactive fa fa-circle red-orb");
+                $(".dvmorbicon").attr("title","Monitored - Limits Exceeded");
+            } else if(data.success.response.includes("dvm-threshold-error")) {
+                $(".dvmorbicon").attr("class","dvmorbicon dvmorbiconactive fa fa-exclamation-triangle");
+                $(".dvmorbicon").attr("title","Threshold status unavailable");
+            } else if(data.success.response.includes("green-text")) {
+                $(".dvmorbicon").attr("class","dvmorbicon dvmorbiconactive fa fa-circle green-orb");
+                $(".dvmorbicon").attr("title","Monitored - Limits Not Exceeded");
+            } else {
+                $(".dvmorbicon").attr("class", "dvmorbicon dvmorbiconactive fa fa-circle dvm-gray-orb");
+                $(".dvmorbicon").attr("title","Monitored - No Limits");
+            }
+        },
+        onState: function (state) {
+            DVMPoll.annotate($('.dvm_mini_dash'), $('.dvm_dashboard_status'), state);
+        }
+    });
+    dvmDashboardPoll.start();
+}
+function addDVMDashboard() {
+    if ($("#db-box1").length) {
+    var i = $("#db-box1 > tbody.sortable").length;
+    dvm_dashboard = $("#dvm_dashboard").detach();
+    dvm_dashboard.find("thead, tbody").attr("sort",i);
+    dvm_dashboard.find("thead, tbody").appendTo('#db-box1');
+    toggleView('dvm_view',true);
+    sortTable($('#db-box1'),$.cookie('db-box1'));
+    getDVMDashboard();
+    }
+}
+$(function(){
+    addDVMDashboard();
+});
+</script>
+<?endif;?>
+<?endif;?>

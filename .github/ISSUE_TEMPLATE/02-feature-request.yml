@@ -1,0 +1,31 @@
+name: Feature Request
+description: Suggest a feature or improvement for Data Volume Monitor.
+title: "[Feature]: "
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Explain the problem you want to solve and how the proposed feature would help.
+        Remove private information from any examples, configuration, or screenshots before posting.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and what currently gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe how you would expect the feature to work.
+    validations:
+      required: true
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Benefit
+      description: Who would benefit, and how would this improve their use of the plugin?
+    validations:
+      required: true

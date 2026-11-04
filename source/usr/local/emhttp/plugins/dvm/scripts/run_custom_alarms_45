@@ -1,0 +1,7 @@
+#!/bin/bash
+# Cron checks once a minute; epoch-minute slots keep a 45-minute cadence
+# across hour boundaries without the 15-minute gap produced by */45.
+seconds=$(date +%s) || exit 1
+[[ "$seconds" =~ ^[0-9]+$ ]] || exit 1
+(( (seconds / 60) % 45 == 0 )) || exit 0
+exec /etc/vnstat/dvm-custom-alarms.sh

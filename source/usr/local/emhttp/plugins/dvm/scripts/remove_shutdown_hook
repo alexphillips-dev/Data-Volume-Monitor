@@ -1,0 +1,9 @@
+#!/usr/bin/php
+<?php
+require_once __DIR__ . '/../include/dvm_shutdown_hook.php';
+try {
+    dvm_remove_shutdown_hook('/etc/rc.d/rc.local_shutdown');
+} catch (Throwable $error) {
+    fwrite(STDERR, 'ERROR: ' . $error->getMessage() . "\n");
+    exit(1);
+}

@@ -1,0 +1,257 @@
+<?xml version='1.0' standalone='yes'?>
+
+<!DOCTYPE PLUGIN [
+<!ENTITY name      "dvm">
+<!ENTITY author    "alexphillips-dev">
+<!ENTITY version   "2026.11.04.11">
+<!ENTITY launch    "Settings/DVMsettings">
+<!ENTITY gitURL    "https://raw.githubusercontent.com/alexphillips-dev/Data-Volume-Monitor/main">
+<!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
+<!ENTITY pkgURL    "&gitURL;/packages">
+<!ENTITY plgPATH   "/boot/config/plugins/&name;">
+<!ENTITY plgNAME   "dvm-2026.11.04.11-x86_64-1">
+<!ENTITY plgMD5    "ef215974598719c7678202298253bb17">
+<!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
+]>
+
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/alexphillips-dev/Data-Volume-Monitor/issues" min="6.8.3">
+
+<CHANGES>
+## Data Volume Monitor
+###2026.11.04.11
+- release: first Stable release of the Data Volume Monitor continuation maintained by alexphillips-dev; includes all audited fixes and development improvements.
+- update: publish canonical main-channel installer/download/update URLs and installed Stable version metadata.
+- update: include vnStat 2.14, updated artwork, consistent primary/secondary threshold tables, clear status colors, reliable polling, verified backups, safer editor saves, and deliberate action diagnostics/retries.
+- docs: publish comprehensive first-release notes with the complete cumulative change list from the original 2026.10.16 manifest and 2025.08.21 plugin package.
+###2026.11.04.10
+- update: arrange the eight primary interface threshold rules in a table matching the secondary threshold settings, with separate Docker and VM action columns.
+- update: preserve saved threshold fields, live status colors, and unavailable workload selections; add accessible control labels and horizontal scrolling for narrow screens.
+- test: verify all 48 primary fields through simulated Apply/reload and check primary and secondary threshold status transitions.
+###2026.11.04.09
+- update: prepare canonical Stable and Development channels without changing the dvm identity or configuration paths.
+- update: display the installed plugin version and channel from packaged release metadata.
+- build: validate exact channel candidates, preserve Git modes, and reject concurrent edits during guarded release preparation.
+- docs: document in-place channel switching, release preparation, and pending host acceptance; expand the GitHub wiki.
+###2026.11.04.08
+- update: show threshold status as red Disabled, green Enabled, or red Invalid using Unraid's native text colors.
+###2026.11.04.07
+- update: keep primary and secondary threshold/action controls readable and show an explicit Disabled label for limits set to -1.
+###2026.11.04.06
+- update: upgrade the bundled vnstat, vnstatd and vnstati executables to upstream 2.14 from signed source.
+- build: add a pinned, reproducible dependency build and verify source signatures, package inventory, executable hashes and ABI compatibility.
+- update: document new vnStat configuration options while retaining DVM defaults and saved configuration.
+- test: qualify 2.12 database history, native threshold boundaries, JSON/XML escaping and every PHP report/image format with the new backend.
+###2026.11.04.05
+- update: keep the traffic overview visible and group detailed reports in a labeled section that starts collapsed.
+###2026.11.04.04
+- fix: serialize UI refreshes, time out failed requests, and retain last valid measurements with visible stale status.
+- fix: verify shutdown hook installation/removal and retain a previous verified database backup for recovery.
+- fix: preserve unavailable saved interfaces and workload selections and distinguish discovery failures.
+- fix: escape report labels/text and use safe generated image names.
+- update: display actionable editor errors and protect unsaved changes.
+- update: make Service Check diagnostic-only and separate confirmed real-action tests; use validated custom-alarm examples.
+- update: record per-rule automation outcomes and offer explicit retries of failed components with current configuration/state checks.
+- build: run syntax, regressions, ignored-file and reproducible package verification in GitHub Actions.
+###2026.11.04.03
+- update: use the new Data Volume Monitor image for the Unraid Settings tile.
+###2026.11.04.02
+- update: separate bottom-bar download/upload usage and color the direction arrows.
+###2026.11.04.01
+- update: use the new Data Volume Monitor icon in the repository and plugin package.
+###2026.11.04
+- transition: Data Volume Monitor is maintained by alexphillips-dev.
+- update: rename plugin paths and point downloads, updates, and support to the new repository.
+- fix: restrict configuration editing to supported files and preserve paired saves on handled failures.
+- fix: prevent stale editor responses from saving contents into the wrong file.
+- fix: distinguish unavailable threshold results from exceeded limits across reports and actions.
+- fix: serialize notification checks and verify VM network operations.
+- fix: aggregate all custom thresholds, correct combined filters, and preserve names in interface matching.
+- fix: propagate service and package-removal failures before dependent operations.
+- fix: honor custom database paths through backup, restore, and reset; retain the selected storage location during resets.
+- fix: schedule custom alarms at a true 45-minute cadence across hour boundaries.
+- build: preserve existing deliverables when validation, source reads, or handled publication steps fail.
+###2025.08.21
+- fix: make pages and dashboards compliant with new responsive UI
+###2025.04.12
+- fix: footer was no longer showing with versions 7.1.0-beta.4
+###2025.02.26
+- fix: future-proofing changes to base plugin structure
+###2025.01.22
+- fix: resolved issue with transition between dashboard and settings
+###2024.11.16b
+- fix: treat multiple container or VM names as separate and individual names when filtering
+###2024.11.15
+- new: added a filter option to filter out any unwanted interfaces from the GUI dashboards
+- fix: fixed DVM Settings page automatically scrolling down to a random position (thanks jcofer555)
+###2024.09.16
+- fix: reworked bash scripts to better standards with more safety for strange configurational states
+###2024.09.13
+- important fix: address possible flock condition causing installation script to stall (thanks AgentXXL)
+###2024.09.12
+- fix: made optical changes regarding wording, positioning and helptexts on the DVM Settings page
+- new: use of plugin usage metric functions to aid development of new features and planning for plugin updates (toggleable)
+###2024.09.09a
+- fix: improvements to error and backend communication handling
+###2024.08.07
+- new: switched from legacy to more recent update checking mechanism
+###2024.06.27a
+- fix: improved safeguards against malformed configurations
+- fix: improved safeguards against XSS cross-site vulnerabilities
+###2024.06.23
+- fix: changed units from KiB to KB
+- fix: renamed generic function names to avoid declaration collisions with other plugins
+- fix: minified the GUI dependencies to reduce the package size and also the page load times within the GUI
+###2024.03.26
+- fix: show terabytes as unit for the data volume reported in the network interface tables
+- fix: add clarification as to why some virtual interfaces will show inverse network traffic
+###2024.03.20
+- new: add setting to match services (dockers/VMs) to virtual network interfaces
+- new: also match docker containers using custom docker networks in the interface table
+- fix: minor bugfix concerning service to virtual network interface matching in interface table
+###2024.03.18
+- release note: welcome to the first version of the DVM package.
+- release note: please do report any problems in the support topic.
+</CHANGES>
+
+<!--
+stop already existing services before doing anything
+-->
+<FILE Run="/bin/bash">
+<INLINE>
+echo "Checking for conflicting network statistics software..."
+if [ -f /boot/config/plugins/dwdvm.plg ] || [ -d /usr/local/emhttp/plugins/dwdvm ]; then
+    echo "ERROR: The original Data Volume Monitor plugin is still installed."
+    echo "Back up its settings and traffic history before removing it."
+    echo "See the repository README for migration instructions."
+    exit 1
+fi
+if [ -f /boot/config/plugins/networkstats.plg ]; then
+    echo ""
+    echo "-------------------------------------------------------------------------"
+    echo "ERROR: THIS PLUGIN CANNOT INSTALL TOGETHER WITH THE Network Stats PLUGIN"
+    echo "Please remove conflicting software from the system to continue install."
+    echo "-------------------------------------------------------------------------"
+    echo ""
+    exit 1
+fi
+
+echo "Making sure all existing DVM services are stopped (before install/upgrade)..."
+if [ -x /etc/rc.d/rc.vnstat ]; then
+    if ! /etc/rc.d/rc.vnstat stop >/dev/null 2>&amp;1; then
+        echo "WARNING:"
+        echo "WARNING: The DVM installation script was not able to stop the services gracefully."
+        echo "ERROR: Upgrade cancelled because the service could not be stopped."
+        exit 1
+    fi
+    killall dvm-poller >/dev/null 2>&amp;1
+fi
+echo ""
+exit 0
+</INLINE>
+</FILE>
+
+<!--
+install or upgrade dependency files
+-->
+
+<FILE Name="&plgPATH;/vnstat-2.14-x86_64-1_dvm.txz" Min="6.8.3" Run="upgradepkg --install-new">
+<URL>&pkgURL;/vnstat-2.14-x86_64-1_dvm.txz</URL>
+<MD5>f0bc7ba4dc2942fa018f81248ed6a0c2</MD5>
+</FILE>
+
+<!--
+install or upgrade the plugin itself
+-->
+<FILE Name="&plgPATH;/&plgNAME;.txz" Min="6.8.3" Run="upgradepkg --install-new">
+<URL>&gitURL;/archive/&plgNAME;.txz</URL>
+<MD5>&plgMD5;</MD5>
+</FILE>
+
+<!--
+run the post-installation scripts
+-->
+<FILE Run="/bin/bash">
+<INLINE>
+CONFIG=&plgPATH;/&name;.cfg
+
+# reading our configuration
+echo "Reading DVM configuration..."
+if [ -e "$CONFIG" ]; then
+    source "$CONFIG"
+fi
+
+echo "Determining if DVM service should be started..."
+
+if [ "$SERVICE" == "enable" ]; then
+    echo "Preparing DVM service for startup..."
+    /etc/rc.d/rc.vnstat start || exit $?
+fi
+
+echo ""
+echo "-------------------------------------------------------------------------"
+echo " Data Volume Monitor has been installed."
+echo " Version: &version; / Plugin Maintainer: &author;"
+echo "-------------------------------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+<!--
+definition for uninstallation of the plugin
+-->
+<FILE Run="/bin/bash" Method="remove">
+<INLINE>
+echo "Making sure all existing DVM services are stopped (before uninstall)..."
+if [ -x /etc/rc.d/rc.vnstat ]; then
+    if ! /etc/rc.d/rc.vnstat stop >/dev/null 2>&amp;1; then
+        echo "WARNING:"
+        echo "WARNING: The DVM uninstallation script was not able to stop the services gracefully."
+        echo "ERROR: Removal cancelled because the service could not be stopped."
+        exit 1
+    fi
+    killall dvm-poller >/dev/null 2>&amp;1
+fi
+
+if [ -x /etc/rc.d/rc.vnstat ]; then
+    DATABASEDIR=$(/etc/rc.d/rc.vnstat database_path) || exit $?
+else
+    echo "ERROR: Cannot resolve the database location; removal cancelled."
+    exit 1
+fi
+
+[[ "$DATABASEDIR" == /* ]] || exit 1
+DATABASEFILE="${DATABASEDIR%/}/vnstat.db"
+&emhttp;/scripts/remove_shutdown_hook || exit $?
+php &emhttp;/include/dvm_outcome_store.php clear || exit $?
+removepkg &plgPATH;/*.txz || exit $?
+rm -f -- "$DATABASEFILE" "$DATABASEFILE-wal" "$DATABASEFILE-shm" "$DATABASEFILE-journal" || exit $?
+
+# clean up folders after the removed installation
+# in case of re-installation of package on live system
+
+rm -rf &plgPATH; || exit $?
+rm -rf &emhttp; || exit $?
+rm -rf /etc/vnstat || exit $?
+rm -f /etc/vnstat.conf || exit $?
+rm -f /tmp/dvm*notified || exit $?
+
+if [ -f /boot/config/plugins/dynamix/dvm-notify.cron ] || [ -f /boot/config/plugins/dynamix/dvm-custom-alarms.cron ]; then
+    rm -f /boot/config/plugins/dynamix/dvm-notify.cron || exit $?
+    rm -f /boot/config/plugins/dynamix/dvm-custom-alarms.cron || exit $?
+    sleep 1
+    update_cron || exit $?
+    sleep 1
+fi
+
+rm -f /etc/cron.daily/dvm-poller >/dev/null 2>&amp;1 || exit $?
+
+echo ""
+echo "-------------------------------------------------------------------------"
+echo " Data Volume Monitor has been removed."
+echo " Version: &version; / Plugin Maintainer: &author;"
+echo "-------------------------------------------------------------------------"
+echo ""
+</INLINE>
+</FILE>
+
+</PLUGIN>

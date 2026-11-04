@@ -1,0 +1,7 @@
+#!/bin/bash
+# Data Volume Monitor; GPL-2.0.
+# This deliberately runs real configured actions using normal transition guards.
+echo "Running the configured threshold check with real actions enabled."
+echo "Containers, VM network links, custom functions, and notifications may run."
+echo "Repeated transitions are not forced. Use Retry for a recorded failure."
+exec /usr/sbin/dvm-notify

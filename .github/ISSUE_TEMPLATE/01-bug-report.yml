@@ -1,0 +1,88 @@
+name: Bug Report
+description: Report a problem with Data Volume Monitor.
+title: "[Bug]: "
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe what happened so we can reproduce and investigate it.
+        Before posting logs, configuration, or screenshots, remove passwords, tokens, public IP addresses, server names, and other private information.
+        Setup and troubleshooting guidance is available in the [wiki](https://github.com/alexphillips-dev/Data-Volume-Monitor/wiki).
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Data Volume Monitor version
+      description: Copy the version from DVM Version / Channel in the plugin settings. Enter "unavailable" if installation failed.
+    validations:
+      required: true
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Release channel
+      description: Check DVM Version / Channel in the plugin settings.
+      options:
+        - Development (dev)
+        - Stable (main)
+        - Unsure
+    validations:
+      required: true
+  - type: input
+    id: unraid-version
+    attributes:
+      label: Unraid version
+    validations:
+      required: true
+  - type: input
+    id: backend-version
+    attributes:
+      label: vnStat backend version
+      description: Copy DVM Backend from the plugin settings. Enter "unavailable" if it is missing.
+    validations:
+      required: true
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected area
+      options:
+        - Installation or updates
+        - Service/backend
+        - Settings or configuration editor
+        - Reports, dashboard, or footer
+        - Thresholds or notifications
+        - Docker, VM, or custom actions
+        - Database, backup, or recovery
+        - Other / unsure
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include relevant settings and the actions that trigger the problem. Say if it happens intermittently.
+      placeholder: |
+        1. Open...
+        2. Set...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the exact error message, if any.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or sanitized logs
+      description: Attach only relevant evidence after removing private information. For display problems, include your browser and Unraid theme.
+    validations:
+      required: false

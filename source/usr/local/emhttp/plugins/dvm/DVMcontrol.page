@@ -1,0 +1,797 @@
+Menu="DVMsettings:1"
+Title="DVM Settings"
+Tag="wrench"
+Markdown="false"
+---
+<?
+/* Copyright Derek Macias (parts of code from NUT package)
+ * Copyright macester (parts of code from NUT package)
+ * Copyright gfjardim (parts of code from NUT package)
+ * Copyright SimonF (parts of code from NUT package)
+ * Copyright Mohamed Emad (icon from vnstat-client package)
+ * Copyright desertwitch
+ * Modified 2026-11-04: Data Volume Monitor naming and repository transition.
+ *
+ * Copyright Dan Landon
+ * Copyright Bergware International
+ * Copyright Lime Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License 2
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ */
+
+require_once '/usr/local/emhttp/plugins/dvm/include/dvm_config.php';
+require_once '/usr/local/emhttp/plugins/dvm/include/dvm_release.php';
+
+require_once '/usr/local/emhttp/plugins/dvm/include/dvm_inventory.php';
+$dvm_interface_inventory = dvm_inventory_query("find /sys/class/net/ -maxdepth 1 -type l -printf '%f\n' 2>/dev/null");
+$dvm_docker_inventory = dvm_inventory_query("docker ps --format '{{.Names}}' --all 2>/dev/null");
+$dvm_vm_inventory = dvm_inventory_query("virsh list --name --all 2>/dev/null");
+$dvm_inventory_messages = [];
+foreach (['Network interface' => $dvm_interface_inventory, 'Docker' => $dvm_docker_inventory, 'VM' => $dvm_vm_inventory] as $label => $inventory) {
+    if ($inventory['status'] === 'error') {
+        $dvm_inventory_messages[] = $label.' inventory could not be loaded. Existing selections are retained; refresh after checking the service.';
+    } elseif (count($inventory['items']) === 0) {
+        $dvm_inventory_messages[] = $label.' inventory is empty. Existing selections are retained.';
+    }
+}
+
+if($dvm_config_running && $dvm_config_autopurge == "enable") {
+    shell_exec("/usr/local/emhttp/plugins/dvm/scripts/clean_db");
+}
+
+$custom_iface_string = "{$dvm_config_custom1_interface};{$dvm_config_custom2_interface};{$dvm_config_custom3_interface};{$dvm_config_custom4_interface};{$dvm_config_custom5_interface};{$dvm_config_custom6_interface}";
+$custom_iface_array = explode(";", trim($custom_iface_string)) ?? [];
+$double_primary = in_array($dvm_config_primary,$custom_iface_array);
+
+?>
+
+<?if ($double_primary):?>
+<div style="border: 3px solid red;padding: 5px;color: red;">
+    You have configured at least one secondary interface threshold to monitor your configured primary network interface.<br>
+    <strong>Please use the primary interface thresholds to monitor the primary interface</strong>, secondary interface thresholds have no effect on the primary interface.
+</div><br>
+<?endif;?>
+
+<?if ($dvm_inventory_messages):?>
+<div class="dvm-inventory-status" role="status">
+<?foreach ($dvm_inventory_messages as $message):?>
+    <p><?=htmlspecialchars($message, ENT_QUOTES, 'UTF-8');?></p>
+<?endforeach;?>
+</div>
+<?endif;?>
+
+<span style="float:right;margin-right:10px"><a href="https://github.com/alexphillips-dev/Data-Volume-Monitor/issues" target="_blank" title="Data Volume Monitor Support"><i class="fa fa-medkit"></i> <u>Support</u></a> / <a href="https://humdi.net/vnstat/" target="_blank" title="DVM User Manual"><i class="fa fa-file-text-o"></i> <u>User Manual</u></a></span>
+
+<div>
+    <span class="left"><i class="icon fa fa-power-off"></i> Service Settings</span>
+</div>
+
+<br>
+
+<form markdown="0" id="dvm-settings" name="dvm_settings" method="POST" action="/update.php" target="progressFrame">
+    <input type="hidden" name="#file" value="dvm/dvm.cfg">
+    <input type="hidden" id="command" name="#command" value="/usr/local/emhttp/plugins/dvm/scripts/write_config" />
+
+    <dl>
+        <dt>DVM Version / Channel:</dt>
+        <dd><strong><?=htmlspecialchars(dvm_release_summary(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');?></strong></dd>
+    </dl>
+
+    <dl>
+        <dt>DVM Backend:</dt>
+        <dd>
+	        <strong><?= isset($dvm_config_installed_backend) && $dvm_config_installed_backend ? $dvm_config_installed_backend : "n/a" ?></strong>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>The version of the vnStat backend that is installed on your system for monitoring of the network interfaces.</p>
+    </blockquote>
+
+    <dl>
+        <dt><strong>Start DVM service:</strong></dt>
+        <dd>
+            <select id="SERVICE" name="SERVICE" size="1">
+                <?=mk_option($dvm_config_service, "disable", "No");?>
+                <?=mk_option($dvm_config_service, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>Set to <strong>'Yes'</strong> to start and enable DVM, the service will start automatically when the system boots.</p>
+        <p>Set to <strong>'No'</strong> to stop and disable DVM, the service will not start automatically when the system boots.</p>
+    </blockquote>
+
+    <dl>
+        <dt>Persist Database on Reboot</dt>
+        <dd>
+            <select id="BACKUPDB" name="BACKUPDB" class="dvm-run" size="1">
+                <?=mk_option($dvm_config_backupdb, "disable", "No");?>
+                <?=mk_option($dvm_config_backupdb, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>Set to <strong>'Yes'</strong> to make the DVM database persist regular system reboots.</p>
+        <p>Set to <strong>'No'</strong> to always start with a fresh DVM database on system reboot.</p>
+        <p>In case of a power outage the last available database remaining on the flash drive will be restored (when enabled).</p>
+    </blockquote>
+
+    <dl>
+        <dt>
+            <span>
+                <input type="submit" name="#default" value="Default">
+                <input id="RESETCONF" class="dvm-run" type="button" value="Reset Config">
+                <input id="RESETALL" class="dvm-run" type="button" value="Reset All">
+            </span>
+        </dt>
+        <dd>
+            <span>
+                <input type="submit" id="btnApply" name="#apply" value="Apply">
+                <input type="button" value="Done" onclick="done()">
+                <input id="RESTART" type="button" value="Restart DVM">
+            </span>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+    <p><strong>Reset Config</strong> will return your DVM configuration to the default state (preserving the database).</p>
+    <p><strong>Reset All</strong> will return your DVM configuration and database to the default state (<u>not</u> preserving the database).</p>
+    <p><strong>Restart DVM</strong> will restart the DVM service.</p>
+    </blockquote>
+
+</form>
+
+<div>
+    <span class="left"><i class="icon fa fa-cogs"></i> Runtime Settings</span>
+</div>
+
+<br>
+
+<form markdown="0" id="dvm-display" name="dvm_display" method="POST" action="/update.php" target="progressFrame">
+    <input type="hidden" name="#file" value="dvm/dvm.cfg">
+    <input type="hidden" id="command2" name="#command" value="/usr/local/emhttp/plugins/dvm/scripts/write_config" />
+
+    <dl>
+        <dt><strong>Primary Network Interface:</strong></dt>
+        <dd>
+        <select id="PRIMARY" name="PRIMARY" size="1">
+            <?=dvm_inventory_options($dvm_config_primary, $dvm_interface_inventory, 'noiface', '-');?>
+        </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting controls what network interface is used for the data volume metrics shown in the dashboard and footer.</p>
+        <p>It is also the network interface that is used for the primary network interface data volume notifications and user actions.</p>
+    </blockquote>
+
+    <dl>
+        <dt>Show Virtual Network Interfaces:</dt>
+        <dd>
+            <select id="VIFACES" name="VIFACES" size="1">
+                <?=mk_option($dvm_config_vifaces, "disable", "No");?>
+                <?=mk_option($dvm_config_vifaces, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting controls if virtual network interfaces should also be displayed on this page.</p>
+        <p>Not all virtual network interfaces are monitorable and some data reported for such interfaces may be inconsistent.</p>
+        <p>Some virtual interfaces will show inverse traffic, e.g. RX as TX, because first the physical interface receives (RX) the traffic (e.g. from the internet) and then the virtual interface sends (TX) that traffic to its final destination (e.g. a Docker or VM).</p>
+    </blockquote>
+
+    <dl>
+        <dt>Match Virtual Network Interfaces to Services:</dt>
+        <dd>
+            <select id="MATCHVIRTS" name="MATCHVIRTS" size="1">
+                <?=mk_option($dvm_config_match_virts, "disable", "No");?>
+                <?=mk_option($dvm_config_match_virts, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting will <u>attempt</u> to match any virtual interfaces with their respective Dockers and VMs, in order to better be able to read the metrics.</p>
+        <p>Please note that virtual network interfaces do not persist between Docker container restarts and a different interface may be assigned after a container restarts.</p>
+        <p>It is therefore best to set up thresholds using actual physical network interfaces (e.g. eth0) and not rely on virtual network interfaces for notifications and user actions.</p>
+    </blockquote>
+
+    <dl>
+        <dt>Show Removed Network Interfaces:</dt>
+        <dd>
+            <select id="OIFACES" name="OIFACES" size="1">
+                <?=mk_option($dvm_config_oifaces, "disable", "No");?>
+                <?=mk_option($dvm_config_oifaces, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting controls if network interfaces that are in the database, but no longer exist on the system, should be shown on this page.</p>
+        <p>You can purge any removed network interfaces and their recorded data volume information from the database using the <strong>'Purge Database'</strong> button at the bottom of this page.</p>
+    </blockquote>
+
+    <dl>
+        <dt>Auto Purge Removed Network Interfaces:</dt>
+        <dd>
+            <select id="AUTOPURGE" name="AUTOPURGE" size="1">
+                <?=mk_option($dvm_config_autopurge, "disable", "No");?>
+                <?=mk_option($dvm_config_autopurge, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting controls if network interfaces that are in the database, but no longer exist on the system, should be removed from the database automatically.</p>
+        <p>You can also manually purge any removed network interfaces and their recorded data volume information from the database using the <strong>'Purge Database'</strong> button at the bottom of this page.</p>
+    </blockquote>
+
+    <dl>
+        <dt>Visible Network Interface and Service Filter:</dt>
+        <dd>
+            <input type="text" class="<?if(version_compare(parse_ini_file('/etc/unraid-version')['version'],'7.1.99', '<')):?>narrow<?endif;?>" name="FILTERS" value="<?=htmlspecialchars($dvm_config_filters, ENT_QUOTES, 'UTF-8');?>">
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>Put here all network interface, container or VM names that you want shown within the DVM dashboards (or write nothing to show everything).</p>
+        <p>Make sure to write them as <strong>case-sensitive</strong> and separated by a semicolon (<strong>;</strong>) - an example configuration could be: <code>br0;win10vm;Grafana</code></p>
+        <p>To be able to filter by container or VM names, the <em><strong>"Match Virtual Network Interfaces to Services"</strong></em> setting needs to be enabled within the DVM settings also.</p>
+        <p>Please note that these filters are applied only after all other settings were processed, so such other settings may also filter out certain interfaces (e.g. virtual or removed interfaces).</p>
+    </blockquote>
+
+    <dl>
+        <dt><strong>Show Data Volume Metrics in Dashboard:</strong></dt>
+        <dd>
+            <select id="DASHB" name="DASHB" size="1">
+                <?=mk_option($dvm_config_dashb, "disable", "No");?>
+                <?=mk_option($dvm_config_dashb, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting will enable a dashboard with data volume metrics for the primary network interface (as configured above) on your system front page.</p>
+    </blockquote>
+
+    <dl>
+        <dt><strong>Show Data Volume Metrics in Footer:</strong></dt>
+        <dd>
+            <select id="FOOTER" name="FOOTER" size="1">
+                <?=mk_option($dvm_config_footer, "disable", "No");?>
+                <?=mk_option($dvm_config_footer, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting will enable a footer with data volume metrics for the primary network interface (as configured above) on all of your system pages.</p>
+    </blockquote>
+
+    <dl>
+        <dt>General Data Volume Reporting Output Format:</dt>
+        <dd>
+            <select id="REPORT" name="REPORT" size="1">
+                <?=mk_option($dvm_config_report, 'text', 'Text Metrics');?>
+                <?=mk_option($dvm_config_report, 'images', 'Image Metrics');?>
+                <?=mk_option($dvm_config_report, 'both', 'Dual Metrics');?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting controls how the data volume metrics are displayed on this page.</p>
+        <p>Not all versions of UNRAID include the required image generation libraries, so on some system versions the image metrics may not show.</p>
+    </blockquote>
+
+    <dl>
+        <dt>Miniature Data Volume Reporting Observed Time:</dt>
+        <dd>
+            <select id="FOOTERFORMAT" name="FOOTERFORMAT" size="1">
+                <?=mk_option($dvm_config_footerformat, "5", "Last 5 Minutes");?>
+                <?=mk_option($dvm_config_footerformat, "h", "Last Hour");?>
+                <?=mk_option($dvm_config_footerformat, "d", "Last Day");?>
+                <?=mk_option($dvm_config_footerformat, "m", "Last Month");?>
+                <?=mk_option($dvm_config_footerformat, "y", "Last Year");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting controls how the miniature data volume metrics are displayed for the primary network interface (as configured above) in the dashboard and footer.</p>
+    </blockquote>
+
+    <dl>
+        <dt><strong>Data Volume <u>Exceeded</u> Notifications:</strong></dt>
+        <dd>
+            <select id="BADNOTIFY" name="BADNOTIFY" size="1">
+                <?=mk_option($dvm_config_bad_notify, "disable", "No");?>
+                <?=mk_option($dvm_config_bad_notify, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting will enable notifications when a certain data volume threshold has been exceeded on the monitored network interfaces.</p>
+    </blockquote>
+
+    <dl>
+        <dt><strong>Data Volume <u>Exceeded</u> User Actions:</strong></dt>
+        <dd>
+            <select id="BADACTIONS" name="BADACTIONS" size="1">
+                <?=mk_option($dvm_config_bad_actions, "disable", "No");?>
+                <?=mk_option($dvm_config_bad_actions, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting will enable and execute user actions (below Docker/VM settings or configured inside <strong>dvm-user-actions.sh</strong>) once a certain data volume threshold has been exceeded on the primary network interface.</p>
+    </blockquote>
+
+    <dl>
+        <dt><strong>Data Volume <u>Reset</u> Notifications:</strong></dt>
+        <dd>
+            <select id="GOODNOTIFY" name="GOODNOTIFY" size="1">
+                <?=mk_option($dvm_config_good_notify, "disable", "No");?>
+                <?=mk_option($dvm_config_good_notify, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting will enable notifications when the data limit is normal again (reset) on the monitored network interfaces (enough time has passed).</p>
+    </blockquote>
+
+    <dl>
+        <dt><strong>Data Volume <u>Reset</u> User Actions:</strong></dt>
+        <dd>
+            <select id="GOODACTIONS" name="GOODACTIONS" size="1">
+                <?=mk_option($dvm_config_good_actions, "disable", "No");?>
+                <?=mk_option($dvm_config_good_actions, "enable", "Yes");?>
+            </select>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting will enable and execute user actions (below Docker/VM settings or configured inside <strong>dvm-user-actions.sh</strong>) once the data limit is normal again (reset) on the primary network interface (enough time has passed).</p>
+    </blockquote>
+
+    <dl>
+        <dt>Custom Alarms Script Execution Frequency:</dt>
+            <dd>
+                <select id="CRONINT" name="CRONINT" size="1">
+                    <?=mk_option($dvm_config_cronint, 'disable', 'Never');?>
+                    <?=mk_option($dvm_config_cronint, '01min', 'Every 01 Minute(s)');?>
+                    <?=mk_option($dvm_config_cronint, '15min', 'Every 15 Minute(s)');?>
+                    <?=mk_option($dvm_config_cronint, '30min', 'Every 30 Minute(s)');?>
+                    <?=mk_option($dvm_config_cronint, '45min', 'Every 45 Minute(s)');?>
+                    <?=mk_option($dvm_config_cronint, '60min', 'Every 60 Minute(s)');?>
+                </select>
+            </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+        <p>This setting controls how often the custom alarms script (contents of <strong>dvm-custom-alarms.sh</strong>) is executed by the crontab.</p>
+        <p>This script is for advanced users and operates independently from the notifications, data thresholds and user actions configured below.</p>
+        <p><strong>In most cases you will <u>not</u> need to enable this setting, it has nothing to do with the notifications and user actions configured below.</strong></p>
+    </blockquote>
+
+    <dl>
+        <dt>
+            <span>
+                <input type="submit" name="#default" value="Default">
+                <input id="CLEANDB" type="button" value="Purge Database">
+            </span>
+        </dt>
+        <dd>
+            <span>
+                <input type="submit" id="btnApply2" name="#apply" value="Apply">
+                <input type="button" value="Done" onclick="done()">
+            </span>
+        </dd>
+    </dl>
+
+    <blockquote class="inline_help">
+    <p><strong>Purge Database</strong> cleans no longer existing network interfaces and their recorded data volume information from the database.</p>
+    </blockquote>
+</form>
+
+<br><hr><br>
+
+<style>
+#dvm-alarms .dvm-limit-status { margin-left:0.6em; font-weight:600; }
+.dvm-primary-threshold-scroll { max-width:100%; overflow-x:auto; }
+#dvm-primary-thresholds { min-width:1100px; }
+#dvm-primary-thresholds td { white-space:nowrap; }
+</style>
+
+<form markdown="0" id="dvm-alarms" name="dvm_alarms" method="POST" action="/update.php" target="progressFrame">
+    <input type="hidden" name="#file" value="dvm/dvm.cfg">
+    <input type="hidden" id="command3" name="#command" value="/usr/local/emhttp/plugins/dvm/scripts/write_config" />
+
+    <div>
+    <span class="left"><i class="icon fa fa-bullhorn"></i> Primary Interface Thresholds and User Actions </span>
+    </div><br>
+
+    <p>Each row monitors the primary interface for one direction and timespan. Enter -1 to disable a threshold.</p>
+    <div class="dvm-primary-threshold-scroll" role="region" aria-label="Primary interface thresholds" tabindex="0">
+    <table id="dvm-primary-thresholds" class="tablesorter">
+    <thead><tr><th scope="col"><strong>Network Interface</strong></th><th scope="col"><strong>Traffic Direction</strong></th><th scope="col"><strong>Timespan</strong></th><th scope="col"><strong>Volume Threshold</strong></th><th scope="col"><strong>Unit</strong></th><th scope="col"><strong>Stop Docker</strong></th><th scope="col"><strong>Start Docker</strong></th><th scope="col"><strong>Disconnect VM</strong></th><th scope="col"><strong>Reconnect VM</strong></th></tr></thead>
+    <tbody>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>IN-bound</td>
+    <td>Last Hour</td>
+    <td><input type="text" class="narrow dvmlimit" id="RXLIMITH" aria-label="Last Hour IN-bound volume threshold" name="RXLIMITH" maxlength="40" value="<?=$dvm_config_hlimit_rx;?>"></td>
+    <td><select id="RXUNITH" aria-label="Last Hour IN-bound unit" name="RXUNITH" class="narrow" size="1">
+            <?=mk_option($dvm_config_hunit_rx, "B", "B");?>
+            <?=mk_option($dvm_config_hunit_rx, "KB", "KB");?>
+            <?=mk_option($dvm_config_hunit_rx, "MB", "MB");?>
+            <?=mk_option($dvm_config_hunit_rx, "GB", "GB");?>
+            <?=mk_option($dvm_config_hunit_rx, "TB", "TB");?>
+            </select></td>
+    <td><select id="RXDOCKERHSTOP" aria-label="Last Hour IN-bound stop Docker" name="RXDOCKERHSTOP" size="1"><?=dvm_inventory_options($dvm_config_hdocker_rx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXDOCKERHSTART" aria-label="Last Hour IN-bound start Docker" name="RXDOCKERHSTART" size="1"><?=dvm_inventory_options($dvm_config_hdocker_rx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMHSTOP" aria-label="Last Hour IN-bound disconnect VM" name="RXVMHSTOP" size="1"><?=dvm_inventory_options($dvm_config_hvm_rx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMHSTART" aria-label="Last Hour IN-bound reconnect VM" name="RXVMHSTART" size="1"><?=dvm_inventory_options($dvm_config_hvm_rx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>OUT-bound</td>
+    <td>Last Hour</td>
+    <td><input type="text" class="narrow dvmlimit" id="TXLIMITH" aria-label="Last Hour OUT-bound volume threshold" name="TXLIMITH" maxlength="40" value="<?=$dvm_config_hlimit_tx;?>"></td>
+    <td><select id="TXUNITH" aria-label="Last Hour OUT-bound unit" name="TXUNITH" class="narrow" size="1">
+            <?=mk_option($dvm_config_hunit_tx, "B", "B");?>
+            <?=mk_option($dvm_config_hunit_tx, "KB", "KB");?>
+            <?=mk_option($dvm_config_hunit_tx, "MB", "MB");?>
+            <?=mk_option($dvm_config_hunit_tx, "GB", "GB");?>
+            <?=mk_option($dvm_config_hunit_tx, "TB", "TB");?>
+            </select></td>
+    <td><select id="TXDOCKERHSTOP" aria-label="Last Hour OUT-bound stop Docker" name="TXDOCKERHSTOP" size="1"><?=dvm_inventory_options($dvm_config_hdocker_tx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXDOCKERHSTART" aria-label="Last Hour OUT-bound start Docker" name="TXDOCKERHSTART" size="1"><?=dvm_inventory_options($dvm_config_hdocker_tx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMHSTOP" aria-label="Last Hour OUT-bound disconnect VM" name="TXVMHSTOP" size="1"><?=dvm_inventory_options($dvm_config_hvm_tx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMHSTART" aria-label="Last Hour OUT-bound reconnect VM" name="TXVMHSTART" size="1"><?=dvm_inventory_options($dvm_config_hvm_tx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>IN-bound</td>
+    <td>Last Day</td>
+    <td><input type="text" class="narrow dvmlimit" id="RXLIMITD" aria-label="Last Day IN-bound volume threshold" name="RXLIMITD" maxlength="40" value="<?=$dvm_config_dlimit_rx;?>"></td>
+    <td><select id="RXUNITD" aria-label="Last Day IN-bound unit" name="RXUNITD" class="narrow" size="1">
+            <?=mk_option($dvm_config_dunit_rx, "B", "B");?>
+            <?=mk_option($dvm_config_dunit_rx, "KB", "KB");?>
+            <?=mk_option($dvm_config_dunit_rx, "MB", "MB");?>
+            <?=mk_option($dvm_config_dunit_rx, "GB", "GB");?>
+            <?=mk_option($dvm_config_dunit_rx, "TB", "TB");?>
+            </select></td>
+    <td><select id="RXDOCKERDSTOP" aria-label="Last Day IN-bound stop Docker" name="RXDOCKERDSTOP" size="1"><?=dvm_inventory_options($dvm_config_ddocker_rx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXDOCKERDSTART" aria-label="Last Day IN-bound start Docker" name="RXDOCKERDSTART" size="1"><?=dvm_inventory_options($dvm_config_ddocker_rx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMDSTOP" aria-label="Last Day IN-bound disconnect VM" name="RXVMDSTOP" size="1"><?=dvm_inventory_options($dvm_config_dvm_rx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMDSTART" aria-label="Last Day IN-bound reconnect VM" name="RXVMDSTART" size="1"><?=dvm_inventory_options($dvm_config_dvm_rx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>OUT-bound</td>
+    <td>Last Day</td>
+    <td><input type="text" class="narrow dvmlimit" id="TXLIMITD" aria-label="Last Day OUT-bound volume threshold" name="TXLIMITD" maxlength="40" value="<?=$dvm_config_dlimit_tx;?>"></td>
+    <td><select id="TXUNITD" aria-label="Last Day OUT-bound unit" name="TXUNITD" class="narrow" size="1">
+            <?=mk_option($dvm_config_dunit_tx, "B", "B");?>
+            <?=mk_option($dvm_config_dunit_tx, "KB", "KB");?>
+            <?=mk_option($dvm_config_dunit_tx, "MB", "MB");?>
+            <?=mk_option($dvm_config_dunit_tx, "GB", "GB");?>
+            <?=mk_option($dvm_config_dunit_tx, "TB", "TB");?>
+            </select></td>
+    <td><select id="TXDOCKERDSTOP" aria-label="Last Day OUT-bound stop Docker" name="TXDOCKERDSTOP" size="1"><?=dvm_inventory_options($dvm_config_ddocker_tx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXDOCKERDSTART" aria-label="Last Day OUT-bound start Docker" name="TXDOCKERDSTART" size="1"><?=dvm_inventory_options($dvm_config_ddocker_tx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMDSTOP" aria-label="Last Day OUT-bound disconnect VM" name="TXVMDSTOP" size="1"><?=dvm_inventory_options($dvm_config_dvm_tx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMDSTART" aria-label="Last Day OUT-bound reconnect VM" name="TXVMDSTART" size="1"><?=dvm_inventory_options($dvm_config_dvm_tx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>IN-bound</td>
+    <td>Last Month</td>
+    <td><input type="text" class="narrow dvmlimit" id="RXLIMITM" aria-label="Last Month IN-bound volume threshold" name="RXLIMITM" maxlength="40" value="<?=$dvm_config_mlimit_rx;?>"></td>
+    <td><select id="RXUNITM" aria-label="Last Month IN-bound unit" name="RXUNITM" class="narrow" size="1">
+            <?=mk_option($dvm_config_munit_rx, "B", "B");?>
+            <?=mk_option($dvm_config_munit_rx, "KB", "KB");?>
+            <?=mk_option($dvm_config_munit_rx, "MB", "MB");?>
+            <?=mk_option($dvm_config_munit_rx, "GB", "GB");?>
+            <?=mk_option($dvm_config_munit_rx, "TB", "TB");?>
+            </select></td>
+    <td><select id="RXDOCKERMSTOP" aria-label="Last Month IN-bound stop Docker" name="RXDOCKERMSTOP" size="1"><?=dvm_inventory_options($dvm_config_mdocker_rx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXDOCKERMSTART" aria-label="Last Month IN-bound start Docker" name="RXDOCKERMSTART" size="1"><?=dvm_inventory_options($dvm_config_mdocker_rx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMMSTOP" aria-label="Last Month IN-bound disconnect VM" name="RXVMMSTOP" size="1"><?=dvm_inventory_options($dvm_config_mvm_rx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMMSTART" aria-label="Last Month IN-bound reconnect VM" name="RXVMMSTART" size="1"><?=dvm_inventory_options($dvm_config_mvm_rx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>OUT-bound</td>
+    <td>Last Month</td>
+    <td><input type="text" class="narrow dvmlimit" id="TXLIMITM" aria-label="Last Month OUT-bound volume threshold" name="TXLIMITM" maxlength="40" value="<?=$dvm_config_mlimit_tx;?>"></td>
+    <td><select id="TXUNITM" aria-label="Last Month OUT-bound unit" name="TXUNITM" class="narrow" size="1">
+            <?=mk_option($dvm_config_munit_tx, "B", "B");?>
+            <?=mk_option($dvm_config_munit_tx, "KB", "KB");?>
+            <?=mk_option($dvm_config_munit_tx, "MB", "MB");?>
+            <?=mk_option($dvm_config_munit_tx, "GB", "GB");?>
+            <?=mk_option($dvm_config_munit_tx, "TB", "TB");?>
+            </select></td>
+    <td><select id="TXDOCKERMSTOP" aria-label="Last Month OUT-bound stop Docker" name="TXDOCKERMSTOP" size="1"><?=dvm_inventory_options($dvm_config_mdocker_tx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXDOCKERMSTART" aria-label="Last Month OUT-bound start Docker" name="TXDOCKERMSTART" size="1"><?=dvm_inventory_options($dvm_config_mdocker_tx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMMSTOP" aria-label="Last Month OUT-bound disconnect VM" name="TXVMMSTOP" size="1"><?=dvm_inventory_options($dvm_config_mvm_tx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMMSTART" aria-label="Last Month OUT-bound reconnect VM" name="TXVMMSTART" size="1"><?=dvm_inventory_options($dvm_config_mvm_tx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>IN-bound</td>
+    <td>Last Year</td>
+    <td><input type="text" class="narrow dvmlimit" id="RXLIMITY" aria-label="Last Year IN-bound volume threshold" name="RXLIMITY" maxlength="40" value="<?=$dvm_config_ylimit_rx;?>"></td>
+    <td><select id="RXUNITY" aria-label="Last Year IN-bound unit" name="RXUNITY" class="narrow" size="1">
+            <?=mk_option($dvm_config_yunit_rx, "B", "B");?>
+            <?=mk_option($dvm_config_yunit_rx, "KB", "KB");?>
+            <?=mk_option($dvm_config_yunit_rx, "MB", "MB");?>
+            <?=mk_option($dvm_config_yunit_rx, "GB", "GB");?>
+            <?=mk_option($dvm_config_yunit_rx, "TB", "TB");?>
+            </select></td>
+    <td><select id="RXDOCKERYSTOP" aria-label="Last Year IN-bound stop Docker" name="RXDOCKERYSTOP" size="1"><?=dvm_inventory_options($dvm_config_ydocker_rx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXDOCKERYSTART" aria-label="Last Year IN-bound start Docker" name="RXDOCKERYSTART" size="1"><?=dvm_inventory_options($dvm_config_ydocker_rx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMYSTOP" aria-label="Last Year IN-bound disconnect VM" name="RXVMYSTOP" size="1"><?=dvm_inventory_options($dvm_config_yvm_rx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="RXVMYSTART" aria-label="Last Year IN-bound reconnect VM" name="RXVMYSTART" size="1"><?=dvm_inventory_options($dvm_config_yvm_rx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><?=$dvm_config_primary;?></td>
+    <td>OUT-bound</td>
+    <td>Last Year</td>
+    <td><input type="text" class="narrow dvmlimit" id="TXLIMITY" aria-label="Last Year OUT-bound volume threshold" name="TXLIMITY" maxlength="40" value="<?=$dvm_config_ylimit_tx;?>"></td>
+    <td><select id="TXUNITY" aria-label="Last Year OUT-bound unit" name="TXUNITY" class="narrow" size="1">
+            <?=mk_option($dvm_config_yunit_tx, "B", "B");?>
+            <?=mk_option($dvm_config_yunit_tx, "KB", "KB");?>
+            <?=mk_option($dvm_config_yunit_tx, "MB", "MB");?>
+            <?=mk_option($dvm_config_yunit_tx, "GB", "GB");?>
+            <?=mk_option($dvm_config_yunit_tx, "TB", "TB");?>
+            </select></td>
+    <td><select id="TXDOCKERYSTOP" aria-label="Last Year OUT-bound stop Docker" name="TXDOCKERYSTOP" size="1"><?=dvm_inventory_options($dvm_config_ydocker_tx_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXDOCKERYSTART" aria-label="Last Year OUT-bound start Docker" name="TXDOCKERYSTART" size="1"><?=dvm_inventory_options($dvm_config_ydocker_tx_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMYSTOP" aria-label="Last Year OUT-bound disconnect VM" name="TXVMYSTOP" size="1"><?=dvm_inventory_options($dvm_config_yvm_tx_stop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="TXVMYSTART" aria-label="Last Year OUT-bound reconnect VM" name="TXVMYSTART" size="1"><?=dvm_inventory_options($dvm_config_yvm_tx_start, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+
+    <blockquote class="inline_help">
+        <p>These thresholds control notifications, user actions, dashboard and footer status for the primary network interface. Each row keeps its own threshold, unit and action selections.</p>
+        <p>Notifications and user actions require their respective global threshold exceeded or threshold reset switches to be enabled. The Enabled/Disabled label describes the entered limit; it does not enable those global switches.</p>
+        <p>Stop Docker and Disconnect VM run when the threshold is exceeded. Start Docker and Reconnect VM run when it returns to normal (reset). Select None to leave that action unconfigured.</p>
+        <p>Disconnecting and reconnecting a VM is equivalent to unplugging and replugging its network cable; it does not change the VM configuration.</p>
+        <p>For additional commands or advanced scripting, edit <strong>dvm-user-actions.sh</strong> using the DVM configuration editor.</p>
+    </blockquote>
+    <br>
+
+    <div>
+    <span class="left"><i class="icon fa fa-bullhorn"></i> Secondary Interface Thresholds and User Actions </span>
+    </div><br>
+
+    <div>
+    <table class="tablesorter">
+    <thead><tr><th><strong>Network Interface</strong></th><th><strong>Traffic Direction</strong></th><th><strong>Timespan</strong></th><th><strong>Volume Threshold</strong></th><th><strong>Unit</strong></th><th><strong>Stop Docker</strong></th><th><strong>Start Docker</strong></th><th><strong>Disconnect VM</strong></th><th><strong>Reconnect VM</strong></th></tr></thead>
+    <tbody>
+    <tr>
+    <td><select id="CUSTOM1INTERFACE" name="CUSTOM1INTERFACE" size="1"><?=dvm_inventory_options($dvm_config_custom1_interface, $dvm_interface_inventory, 'noiface', '-');?></select></td>
+    <td><select id="CUSTOM1MODE" name="CUSTOM1MODE" size="1"><?=mk_option($dvm_config_custom1_mode, "rx", "IN-bound");?><?=mk_option($dvm_config_custom1_mode, "tx", "OUT-bound");?></select></td>
+    <td><select id="CUSTOM1TIME" name="CUSTOM1TIME" size="1" class="narrow"><?=mk_option($dvm_config_custom1_time, "h", "Last Hour");?><?=mk_option($dvm_config_custom1_time, "d", "Last Day");?><?=mk_option($dvm_config_custom1_time, "m", "Last Month");?><?=mk_option($dvm_config_custom1_time, "y", "Last Year");?></select></td>
+    <td><input type="text" class="narrow dvmlimit2" id="CUSTOM1LIMIT" name="CUSTOM1LIMIT" value="<?=$dvm_config_custom1_limit;?>"></input></td>
+    <td><select id="CUSTOM1UNIT" name="CUSTOM1UNIT" class="narrow" size="1"><?=mk_option($dvm_config_custom1_unit, "B", "B");?><?=mk_option($dvm_config_custom1_unit, "KB", "KB");?><?=mk_option($dvm_config_custom1_unit, "MB", "MB");?><?=mk_option($dvm_config_custom1_unit, "GB", "GB");?><?=mk_option($dvm_config_custom1_unit, "TB", "TB");?></select></td>
+    <td><select id="CUSTOM1STOP" name="CUSTOM1STOP" size="1"><?=dvm_inventory_options($dvm_config_custom1_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM1START" name="CUSTOM1START" size="1"><?=dvm_inventory_options($dvm_config_custom1_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM1VMSTOP" name="CUSTOM1VMSTOP" size="1"><?=dvm_inventory_options($dvm_config_custom1_vmstop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM1VMSTART" name="CUSTOM1VMSTART" size="1"><?=dvm_inventory_options($dvm_config_custom1_vmstart, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><select id="CUSTOM2INTERFACE" name="CUSTOM2INTERFACE" size="1"><?=dvm_inventory_options($dvm_config_custom2_interface, $dvm_interface_inventory, 'noiface', '-');?></select></td>
+    <td><select id="CUSTOM2MODE" name="CUSTOM2MODE" size="1"><?=mk_option($dvm_config_custom2_mode, "rx", "IN-bound");?><?=mk_option($dvm_config_custom2_mode, "tx", "OUT-bound");?></select></td>
+    <td><select id="CUSTOM2TIME" name="CUSTOM2TIME" size="1" class="narrow"><?=mk_option($dvm_config_custom2_time, "h", "Last Hour");?><?=mk_option($dvm_config_custom2_time, "d", "Last Day");?><?=mk_option($dvm_config_custom2_time, "m", "Last Month");?><?=mk_option($dvm_config_custom2_time, "y", "Last Year");?></select></td>
+    <td><input type="text" class="narrow dvmlimit2" id="CUSTOM2LIMIT" name="CUSTOM2LIMIT" value="<?=$dvm_config_custom2_limit;?>"></input></td>
+    <td><select id="CUSTOM2UNIT" name="CUSTOM2UNIT" class="narrow" size="1"><?=mk_option($dvm_config_custom2_unit, "B", "B");?><?=mk_option($dvm_config_custom2_unit, "KB", "KB");?><?=mk_option($dvm_config_custom2_unit, "MB", "MB");?><?=mk_option($dvm_config_custom2_unit, "GB", "GB");?><?=mk_option($dvm_config_custom2_unit, "TB", "TB");?></select></td>
+    <td><select id="CUSTOM2STOP" name="CUSTOM2STOP" size="1"><?=dvm_inventory_options($dvm_config_custom2_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM2START" name="CUSTOM2START" size="1"><?=dvm_inventory_options($dvm_config_custom2_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM2VMSTOP" name="CUSTOM2VMSTOP" size="1"><?=dvm_inventory_options($dvm_config_custom2_vmstop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM2VMSTART" name="CUSTOM2VMSTART" size="1"><?=dvm_inventory_options($dvm_config_custom2_vmstart, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><select id="CUSTOM3INTERFACE" name="CUSTOM3INTERFACE" size="1"><?=dvm_inventory_options($dvm_config_custom3_interface, $dvm_interface_inventory, 'noiface', '-');?></select></td>
+    <td><select id="CUSTOM3MODE" name="CUSTOM3MODE" size="1"><?=mk_option($dvm_config_custom3_mode, "rx", "IN-bound");?><?=mk_option($dvm_config_custom3_mode, "tx", "OUT-bound");?></select></td>
+    <td><select id="CUSTOM3TIME" name="CUSTOM3TIME" size="1" class="narrow"><?=mk_option($dvm_config_custom3_time, "h", "Last Hour");?><?=mk_option($dvm_config_custom3_time, "d", "Last Day");?><?=mk_option($dvm_config_custom3_time, "m", "Last Month");?><?=mk_option($dvm_config_custom3_time, "y", "Last Year");?></select></td>
+    <td><input type="text" class="narrow dvmlimit2" id="CUSTOM3LIMIT" name="CUSTOM3LIMIT" value="<?=$dvm_config_custom3_limit;?>"></input></td>
+    <td><select id="CUSTOM3UNIT" name="CUSTOM3UNIT" class="narrow" size="1"><?=mk_option($dvm_config_custom3_unit, "B", "B");?><?=mk_option($dvm_config_custom3_unit, "KB", "KB");?><?=mk_option($dvm_config_custom3_unit, "MB", "MB");?><?=mk_option($dvm_config_custom3_unit, "GB", "GB");?><?=mk_option($dvm_config_custom3_unit, "TB", "TB");?></select></td>
+    <td><select id="CUSTOM3STOP" name="CUSTOM3STOP" size="1"><?=dvm_inventory_options($dvm_config_custom3_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM3START" name="CUSTOM3START" size="1"><?=dvm_inventory_options($dvm_config_custom3_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM3VMSTOP" name="CUSTOM3VMSTOP" size="1"><?=dvm_inventory_options($dvm_config_custom3_vmstop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM3VMSTART" name="CUSTOM3VMSTART" size="1"><?=dvm_inventory_options($dvm_config_custom3_vmstart, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><select id="CUSTOM4INTERFACE" name="CUSTOM4INTERFACE" size="1"><?=dvm_inventory_options($dvm_config_custom4_interface, $dvm_interface_inventory, 'noiface', '-');?></select></td>
+    <td><select id="CUSTOM4MODE" name="CUSTOM4MODE" size="1"><?=mk_option($dvm_config_custom4_mode, "rx", "IN-bound");?><?=mk_option($dvm_config_custom4_mode, "tx", "OUT-bound");?></select></td>
+    <td><select id="CUSTOM4TIME" name="CUSTOM4TIME" size="1" class="narrow"><?=mk_option($dvm_config_custom4_time, "h", "Last Hour");?><?=mk_option($dvm_config_custom4_time, "d", "Last Day");?><?=mk_option($dvm_config_custom4_time, "m", "Last Month");?><?=mk_option($dvm_config_custom4_time, "y", "Last Year");?></select></td>
+    <td><input type="text" class="narrow dvmlimit2" id="CUSTOM4LIMIT" name="CUSTOM4LIMIT" value="<?=$dvm_config_custom4_limit;?>"></input></td>
+    <td><select id="CUSTOM4UNIT" name="CUSTOM4UNIT" class="narrow" size="1"><?=mk_option($dvm_config_custom4_unit, "B", "B");?><?=mk_option($dvm_config_custom4_unit, "KB", "KB");?><?=mk_option($dvm_config_custom4_unit, "MB", "MB");?><?=mk_option($dvm_config_custom4_unit, "GB", "GB");?><?=mk_option($dvm_config_custom4_unit, "TB", "TB");?></select></td>
+    <td><select id="CUSTOM4STOP" name="CUSTOM4STOP" size="1"><?=dvm_inventory_options($dvm_config_custom4_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM4START" name="CUSTOM4START" size="1"><?=dvm_inventory_options($dvm_config_custom4_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM4VMSTOP" name="CUSTOM4VMSTOP" size="1"><?=dvm_inventory_options($dvm_config_custom4_vmstop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM4VMSTART" name="CUSTOM4VMSTART" size="1"><?=dvm_inventory_options($dvm_config_custom4_vmstart, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><select id="CUSTOM5INTERFACE" name="CUSTOM5INTERFACE" size="1"><?=dvm_inventory_options($dvm_config_custom5_interface, $dvm_interface_inventory, 'noiface', '-');?></select></td>
+    <td><select id="CUSTOM5MODE" name="CUSTOM5MODE" size="1"><?=mk_option($dvm_config_custom5_mode, "rx", "IN-bound");?><?=mk_option($dvm_config_custom5_mode, "tx", "OUT-bound");?></select></td>
+    <td><select id="CUSTOM5TIME" name="CUSTOM5TIME" size="1" class="narrow"><?=mk_option($dvm_config_custom5_time, "h", "Last Hour");?><?=mk_option($dvm_config_custom5_time, "d", "Last Day");?><?=mk_option($dvm_config_custom5_time, "m", "Last Month");?><?=mk_option($dvm_config_custom5_time, "y", "Last Year");?></select></td>
+    <td><input type="text" class="narrow dvmlimit2" id="CUSTOM5LIMIT" name="CUSTOM5LIMIT" value="<?=$dvm_config_custom5_limit;?>"></input></td>
+    <td><select id="CUSTOM5UNIT" name="CUSTOM5UNIT" class="narrow" size="1"><?=mk_option($dvm_config_custom5_unit, "B", "B");?><?=mk_option($dvm_config_custom5_unit, "KB", "KB");?><?=mk_option($dvm_config_custom5_unit, "MB", "MB");?><?=mk_option($dvm_config_custom5_unit, "GB", "GB");?><?=mk_option($dvm_config_custom5_unit, "TB", "TB");?></select></td>
+    <td><select id="CUSTOM5STOP" name="CUSTOM5STOP" size="1"><?=dvm_inventory_options($dvm_config_custom5_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM5START" name="CUSTOM5START" size="1"><?=dvm_inventory_options($dvm_config_custom5_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM5VMSTOP" name="CUSTOM5VMSTOP" size="1"><?=dvm_inventory_options($dvm_config_custom5_vmstop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM5VMSTART" name="CUSTOM5VMSTART" size="1"><?=dvm_inventory_options($dvm_config_custom5_vmstart, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    <tr>
+    <td><select id="CUSTOM6INTERFACE" name="CUSTOM6INTERFACE" size="1"><?=dvm_inventory_options($dvm_config_custom6_interface, $dvm_interface_inventory, 'noiface', '-');?></select></td>
+    <td><select id="CUSTOM6MODE" name="CUSTOM6MODE" size="1"><?=mk_option($dvm_config_custom6_mode, "rx", "IN-bound");?><?=mk_option($dvm_config_custom6_mode, "tx", "OUT-bound");?></select></td>
+    <td><select id="CUSTOM6TIME" name="CUSTOM6TIME" size="1" class="narrow"><?=mk_option($dvm_config_custom6_time, "h", "Last Hour");?><?=mk_option($dvm_config_custom6_time, "d", "Last Day");?><?=mk_option($dvm_config_custom6_time, "m", "Last Month");?><?=mk_option($dvm_config_custom6_time, "y", "Last Year");?></select></td>
+    <td><input type="text" class="narrow dvmlimit2" id="CUSTOM6LIMIT" name="CUSTOM6LIMIT" value="<?=$dvm_config_custom6_limit;?>"></input></td>
+    <td><select id="CUSTOM6UNIT" name="CUSTOM6UNIT" class="narrow" size="1"><?=mk_option($dvm_config_custom6_unit, "B", "B");?><?=mk_option($dvm_config_custom6_unit, "KB", "KB");?><?=mk_option($dvm_config_custom6_unit, "MB", "MB");?><?=mk_option($dvm_config_custom6_unit, "GB", "GB");?><?=mk_option($dvm_config_custom6_unit, "TB", "TB");?></select></td>
+    <td><select id="CUSTOM6STOP" name="CUSTOM6STOP" size="1"><?=dvm_inventory_options($dvm_config_custom6_stop, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM6START" name="CUSTOM6START" size="1"><?=dvm_inventory_options($dvm_config_custom6_start, $dvm_docker_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM6VMSTOP" name="CUSTOM6VMSTOP" size="1"><?=dvm_inventory_options($dvm_config_custom6_vmstop, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    <td><select id="CUSTOM6VMSTART" name="CUSTOM6VMSTART" size="1"><?=dvm_inventory_options($dvm_config_custom6_vmstart, $dvm_vm_inventory, 'disable', 'None', '');?></select></td>
+    </tr>
+    </tbody>
+    </table>
+    </div>
+
+    <blockquote class="inline_help">
+    <p>This settings table allows you to configure secondary thresholds and user actions for different network interfaces.</p>
+    <p><strong>Please <u>do not</u> use your primary network interface in this section, as any settings made in this section will have no effect on your primary network interface.</strong></p>
+    <p>It is possible to configure <u>two or more secondary thresholds</u> using the <u>same combination of network interface, traffic direction and timespan</u>, but the status color of the interface will then be based on the first alarm.</p>
+    <p>For example for two alarms both using interface 'eth1', 'inbound' and 'hour': the dashboard will show the status color for the first alarm, but the notifications and actions will run for both and independently of each other.</p>
+    </blockquote>
+
+    <dl>
+        <dt>
+            <span>
+                <input type="submit" name="#default" value="Default">
+                <input id="MANUALCHECK" type="button" value="Service Check">
+                <input id="TESTACTIONS" type="button" value="Test Configured Actions">
+            </span>
+        </dt>
+        <dd>
+            <span>
+                <input type="submit" id="btnApply3" name="#apply" value="Apply"><input type="button" value="Done" onclick="done()">
+            </span>
+        </dd>
+    </dl>
+
+</form>
+
+<p>Service Check only diagnoses the current configuration and thresholds. Test Configured Actions can run real workloads, custom functions, and notifications using saved settings.</p>
+<h3>Configured action outcomes</h3>
+<p>Action results refresh every 30 seconds. Retry runs only recorded failures after checking the current configuration and threshold again.</p>
+<p id="dvm_outcomes_status" role="status" aria-live="polite"></p>
+<div style="overflow-x:auto">
+<table class="tablesorter"><thead><tr><th>Rule</th><th>Interface</th><th>Threshold state</th><th>Result</th><th>Last attempt</th><th>Actions</th></tr></thead><tbody id="dvm_outcomes_body"></tbody></table>
+</div>
+<input id="REFRESHOUTCOMES" type="button" value="Refresh action status">
+<script src="/plugins/dvm/js/dvm-poll.js?v=<?=hash_file('sha256', '/usr/local/emhttp/plugins/dvm/js/dvm-poll.js');?>"></script>
+<script src="/plugins/dvm/js/dvm-outcomes.js?v=<?=hash_file('sha256', '/usr/local/emhttp/plugins/dvm/js/dvm-outcomes.js');?>"></script>
+<script type="text/javascript">
+function checkRUNNING(){
+   if ($('#SERVICE').val() === 'enable')
+        $('#command').val('/usr/local/emhttp/plugins/dvm/scripts/start');
+    else
+        $('#command').val('/usr/local/emhttp/plugins/dvm/scripts/stop');
+    if ("<?=$dvm_config_running;?>" == 1){
+        $('.dvm-run').prop('disabled', true);
+        $('#RESTART').prop('disabled', false);
+        $('#CLEANDB').prop('disabled', false);
+        $('#TESTACTIONS').prop('disabled', false);
+    }else{
+        $('.dvm-run').prop('disabled', false);
+        $('#RESTART').prop('disabled', true);
+        $('#CLEANDB').prop('disabled', true);
+        $('#TESTACTIONS').prop('disabled', true);
+    }
+}
+function checkLIMITS(){
+    $('.dvmlimit, .dvmlimit2').each(function() {
+        var input = $(this), statusId = this.id+'-status';
+        var status = input.siblings('.dvm-limit-status');
+        if (!status.length) {
+            status = $('<span>').attr({id:statusId, role:'status', 'aria-live':'polite'})
+                .addClass('dvm-limit-status');
+            input.parent().append(status);
+        }
+        // Match the evaluator's trimmed positive integer and uint64 limit rules
+        // without converting large decimal values to imprecise JS numbers.
+        var value = input.val().replace(/^[ \t\n\r\0\v]+|[ \t\n\r\0\v]+$/g, '');
+        var digits = value.replace(/^0+/, '');
+        var enabled = /^[0-9]+$/.test(value) && digits.length > 0 &&
+            (digits.length < 20 || (digits.length === 20 && digits <= '18446744073709551615'));
+        var label = value === '-1' ? 'Disabled' : (enabled ? 'Enabled' : 'Invalid');
+        if (status.text() !== label) status.text(label);
+        status.toggleClass('red-text', !enabled).toggleClass('green-text', enabled).show();
+        var descriptions = (input.attr('aria-describedby') || '').split(/\s+/).filter(function(id) {
+            return id && id !== statusId;
+        });
+        descriptions.push(statusId);
+        input.attr('aria-describedby', descriptions.join(' '));
+    });
+}
+function Restart(){
+    $('#command').val('/usr/local/emhttp/plugins/dvm/scripts/restart');
+    $('#dvm-settings').submit();
+}
+function ResetConfig(){
+    $('#command').val('');
+    openBox('/usr/local/emhttp/plugins/dvm/scripts/resetconf', 'DVM Reset Config', 600, 600, true);
+}
+function ResetAll(){
+    $('#command').val('');
+    openBox('/usr/local/emhttp/plugins/dvm/scripts/resetall', 'DVM Reset All', 600, 600, true);
+}
+function CleanDB(){
+    $('#command').val('');
+    openBox('/usr/local/emhttp/plugins/dvm/scripts/clean_db', 'DVM Database Purger', 600, 600, true);
+}
+function ManualCheck(){
+    openBox('/usr/local/emhttp/plugins/dvm/scripts/manual_check', 'DVM Manual Check', 600, 600, false);
+}
+$(function() {
+
+    $('form input:not([type="submit"])').keydown(function(e) {
+        if (e.keyCode == 13) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    $('#btnApply').click(function(){
+        $('#dvm-settings').submit();
+    });
+    $('#btnApply2').click(function(){
+        $('#dvm-display').submit();
+    });
+    $('#btnApply3').click(function(){
+        $('#dvm-alarms').submit();
+    });
+
+    $('#RESTART').click(Restart);
+    $('#MANUALCHECK').click(ManualCheck);
+    var actionOutcomes = DVMOutcomes.create($('#dvm_outcomes_body'), $('#dvm_outcomes_status'));
+    $('#TESTACTIONS').click(actionOutcomes.testActions);
+    $('#REFRESHOUTCOMES').click(actionOutcomes.refresh);
+
+    if (typeof swal === "function") {
+        $('#RESETCONF').click(function(){ swal({title:"Are you sure?",text:"DVM configuration will be returned to the default state.<br>DVM database <u>will not be wiped</u> of any of its contents!",type:"warning",html:true,showCancelButton:true}, ResetConfig); });
+        $('#RESETALL').click(function(){ swal({title:"Are you sure?",text:"DVM configuration will be returned to the default state.<br>DVM database <u>will be wiped</u> of all of its contents!",type:"warning",html:true,showCancelButton:true}, ResetAll); });
+        $('#CLEANDB').click(function(){ swal({title:"Are you sure?",text:"All not currently existing network interfaces <u>and all their recorded data volume information</u> will be removed from the DVM database!",type:"warning",html:true,showCancelButton:true}, CleanDB); });
+    } else {
+        $('#RESETCONF').click(ResetConfig);
+        $('#RESETALL').click(ResetAll);
+        $('#CLEANDB').click(CleanDB);
+    }
+
+    $('#SERVICE').change(checkRUNNING);
+    $('.dvmlimit, .dvmlimit2').on('input change', checkLIMITS);
+
+    checkRUNNING();
+    checkLIMITS();
+
+});
+</script>

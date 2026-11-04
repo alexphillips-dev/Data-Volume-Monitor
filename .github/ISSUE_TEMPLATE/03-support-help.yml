@@ -1,0 +1,62 @@
+name: Support / Configuration Help
+description: Ask for help setting up or using Data Volume Monitor.
+title: "[Help]: "
+labels: [question, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The [wiki](https://github.com/alexphillips-dev/Data-Volume-Monitor/wiki) includes setup and troubleshooting guidance.
+        Before posting logs, configuration, or screenshots, remove passwords, tokens, public IP addresses, server names, and other private information.
+  - type: textarea
+    id: goal
+    attributes:
+      label: What are you trying to accomplish?
+      description: Describe the setup or behavior you need help with.
+    validations:
+      required: true
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Data Volume Monitor version
+      description: Copy the version from DVM Version / Channel in the plugin settings. Enter "unavailable" if it is missing.
+    validations:
+      required: true
+  - type: dropdown
+    id: channel
+    attributes:
+      label: Release channel
+      description: Check DVM Version / Channel in the plugin settings.
+      options:
+        - Development (dev)
+        - Stable (main)
+        - Unsure
+    validations:
+      required: true
+  - type: input
+    id: unraid-version
+    attributes:
+      label: Unraid version
+    validations:
+      required: true
+  - type: input
+    id: backend-version
+    attributes:
+      label: vnStat backend version
+      description: Copy DVM Backend from the plugin settings. Enter "unavailable" if it is missing.
+    validations:
+      required: true
+  - type: textarea
+    id: configuration
+    attributes:
+      label: Relevant configuration
+      description: Describe relevant settings or paste a sanitized excerpt. Do not upload your entire configuration or database.
+    validations:
+      required: false
+  - type: textarea
+    id: attempts
+    attributes:
+      label: What have you tried, and what happened?
+      description: Include relevant error messages and sanitized screenshots or logs, if available.
+    validations:
+      required: true

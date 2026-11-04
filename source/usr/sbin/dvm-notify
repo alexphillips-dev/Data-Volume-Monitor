@@ -1,0 +1,289 @@
+#!/bin/bash
+#
+# Copyright Derek Macias (parts of code from NUT package)
+# Copyright macester (parts of code from NUT package)
+# Copyright gfjardim (parts of code from NUT package)
+# Copyright SimonF (parts of code from NUT package)
+# Copyright Mohamed Emad (icon from vnstat-client package)
+# Copyright desertwitch
+# Modified 2026-11-04: Data Volume Monitor naming and repository transition.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License 2
+# as published by the Free Software Foundation.
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+DRY_RUN=0
+RETRY_RULE=""
+case "${1:-}" in
+    '') [ "$#" -eq 0 ] || exit 2 ;;
+    --dry-run) [ "$#" -eq 1 ] || exit 2; DRY_RUN=1 ;;
+    --retry)
+        [ "$#" -eq 2 ] && [[ "$2" =~ ^(primary-[hdmy]-(rx|tx)|secondary-[1-6])$ ]] || exit 2
+        RETRY_RULE="$2"
+        ;;
+    *) echo "Usage: dvm-notify [--dry-run | --retry RULE]"; exit 2 ;;
+esac
+CONFIG="/etc/vnstat/dvm.cfg"
+ACTIONS="/etc/vnstat/dvm-user-actions.sh"
+NOTIFY="/usr/local/emhttp/plugins/dynamix/scripts/notify"
+THRESHOLD="/usr/local/emhttp/plugins/dvm/include/dvm_threshold.php"
+OUTCOMES="/usr/local/emhttp/plugins/dvm/include/dvm_outcome_store.php"
+HOST="$(echo "$HOSTNAME" | awk '{print toupper($0)}')"
+SUBJECT="[${HOST}] DVM"
+ACTIONS_LOADED=0
+ACTIONS_LOAD_STATUS=0
+ACTIONS_SNAPSHOT=""
+trap '[ -z "$ACTIONS_SNAPSHOT" ] || rm -f -- "$ACTIONS_SNAPSHOT"' EXIT
+RETRY_HANDLED=0
+RUN_EXIT=0
+
+# Cron, manual checks and explicit retries share one lock.
+exec 9>/var/lock/dvm-notify.lock || exit 1
+flock -n 9
+LOCK_STATUS=$?
+if [ "$LOCK_STATUS" -eq 1 ]; then
+    echo "Another DVM threshold check is running... exiting"
+    [ -z "$RETRY_RULE" ] && exit 0 || exit 1
+elif [ "$LOCK_STATUS" -ne 0 ]; then
+    echo "Unable to acquire the DVM threshold-check lock... exiting"
+    exit 1
+fi
+
+# Bind the loaded configuration and user-script version to each outcome.
+# A changed snapshot rejects retry even if the new target happens to look similar.
+CONFIG_VERSION=$(php "$OUTCOMES" digest "$CONFIG" "$ACTIONS") || exit 1
+if ! source "$CONFIG"; then
+    echo "Configuration could not be loaded; no actions performed."
+    exit 1
+fi
+if [ "$(php "$OUTCOMES" digest "$CONFIG" "$ACTIONS")" != "$CONFIG_VERSION" ]; then
+    echo "Configuration changed while reading it; no actions performed."
+    exit 1
+fi
+if [ "$DRY_RUN" -eq 0 ] && [ -z "$RETRY_RULE" ] &&
+   [ "$GOODNOTIFY" != enable ] && [ "$BADNOTIFY" != enable ] && [ "$GOODACTIONS" != enable ] && [ "$BADACTIONS" != enable ]; then
+    echo "All notifications and user actions are disabled... exiting"
+    exit 0
+fi
+pgrep -x vnstatd >/dev/null 2>&1
+PROCESS_STATUS=$?
+if [ "$PROCESS_STATUS" -eq 1 ]; then
+    echo "DVM service is not running... exiting"
+    [ -z "$RETRY_RULE" ] && exit 0 || exit 1
+elif [ "$PROCESS_STATUS" -ne 0 ]; then
+    echo "Unable to determine whether the DVM service is running; no actions performed."
+    exit 1
+fi
+
+dvm_preview_rule() {
+    local state="$1" marker="$2" actions notifications transition=no
+    if [ "$state" == exceeded ]; then
+        actions="$BADACTIONS"; notifications="$BADNOTIFY"
+        [ -f "$marker" ] || transition=yes
+    else
+        actions="$GOODACTIONS"; notifications="$GOODNOTIFY"
+        [ -f "$marker" ] && transition=yes
+    fi
+    echo "DRY RUN: ${state}; new transition: ${transition}; actions: ${actions}; notifications: ${notifications}. No actions or state changes performed."
+}
+
+# Return failure for a failed query, no interfaces, or any failed link change.
+dvm_set_vm_links() {
+    local vm="$1" state="$2" alarm="$3" monitored="$4"
+    local listing interfaces interface result=0
+    if ! listing=$(virsh domiflist "$vm" 2>&1); then
+        echo "(${alarm})[${monitored}] DVM: VM interface query failed for '${vm}': ${listing}" | logger -t "dvm-notify"
+        return 1
+    fi
+    interfaces=$(printf '%s\n' "$listing" | awk 'NR>2 && NF { print $1 }')
+    if [ -z "$interfaces" ]; then
+        echo "(${alarm})[${monitored}] DVM: VM '${vm}' returned no network interfaces." | logger -t "dvm-notify"
+        return 1
+    fi
+    while IFS= read -r interface; do
+        if [ -z "$interface" ] || [ ! -e "/sys/class/net/${interface}" ]; then
+            echo "(${alarm})[${monitored}] DVM: VM interface '${interface}' was not found on the system." | logger -t "dvm-notify"
+            result=1
+            continue
+        fi
+        echo "(${alarm})[${monitored}] DVM: Setting VM '${vm}' interface '${interface}' ${state}." | logger -t "dvm-notify"
+        virsh domif-setlink "$vm" "$interface" "$state" 2>&1 | logger -t "dvm-notify"
+        if [ "${PIPESTATUS[0]}" -ne 0 ]; then
+            result=1
+        fi
+    done <<< "$interfaces"
+    return "$result"
+}
+
+# One transition implementation serves all primary and secondary rules.
+dvm_process_rule() {
+    local rule="$1" alarm="$2" iface="$3" period="$4" mode="$5" limit="$6" unit="$7" marker="$8"
+    local docker_stop="$9" docker_start="${10}" vm_stop="${11}" vm_start="${12}" bad_function="${13}" good_function="${14}"
+    local result transition=no actions notifications docker_target vm_target custom_function docker_operation vm_operation verb vm_verb
+    local retry_codes component_code final_status=0 description notify_kind notify_subject
+    local period_name period_title direction
+    local -a codes=(disabled disabled disabled disabled)
+    if [ -n "$RETRY_RULE" ] && [ "$RETRY_RULE" != "$rule" ]; then return 0; fi
+    [ -z "$RETRY_RULE" ] || RETRY_HANDLED=1
+    printf '%s (%s) %s %s [%s %s]... ' "$rule" "$iface" "$period" "$mode" "$limit" "$unit"
+    if [ "$limit" == -1 ]; then
+        if [ -n "$RETRY_RULE" ]; then echo "Retry rejected: rule disabled."; return 1; fi
+        echo "NOT CHECKING (LIMIT DISABLED)"
+        [ "$DRY_RUN" -eq 1 ] || rm -f "$marker"
+        return 0
+    fi
+    if [ -z "$iface" ] || [ "$iface" == noiface ] || [ ! -e "/sys/class/net/${iface}" ] ||
+       { [ "$alarm" != 0 ] && [ "$iface" == "$PRIMARY" ]; }; then
+        echo "Interface unavailable or primary interface used as secondary; no actions performed."
+        return 1
+    fi
+    if ! result=$(php "$THRESHOLD" "$iface" "$period" "$limit" "$unit" "$mode") ||
+       [[ "$result" != normal && "$result" != exceeded ]]; then
+        echo "FAILED (INVALID THRESHOLD OR BACKEND DATA - STATE UNCHANGED)"
+        return 1
+    fi
+    if [ "$DRY_RUN" -eq 1 ]; then dvm_preview_rule "$result" "$marker"; return 0; fi
+    case "$period" in h) period_name=hour; period_title=Hour;; d) period_name=day; period_title=Day;; m) period_name=month; period_title=Month;; y) period_name=year; period_title=Year;; esac
+    if [ "$mode" == rx ]; then direction=IN; else direction=OUT; fi
+    if [ "$result" == exceeded ]; then
+        [ -f "$marker" ] || transition=yes
+        actions="$BADACTIONS"; notifications="$BADNOTIFY"
+        docker_target="$docker_stop"; vm_target="$vm_stop"; custom_function="$bad_function"
+        docker_operation=stop; vm_operation=down; verb=stopped; vm_verb=disconnected
+        description="The per ${period_name} ${direction}-bound data volume was exceeded."
+        notify_kind=alert; notify_subject="Alert ${SUBJECT} (${iface}): ${period_title} ${mode^^}"
+    else
+        [ -f "$marker" ] && transition=yes
+        actions="$GOODACTIONS"; notifications="$GOODNOTIFY"
+        docker_target="$docker_start"; vm_target="$vm_start"; custom_function="$good_function"
+        docker_operation=start; vm_operation=up; verb=started; vm_verb=reconnected
+        description="The per ${period_name} ${direction}-bound data volume is no longer exceeded."
+        notify_kind=normal; notify_subject="Notice ${SUBJECT} (${iface}): ${period_title} ${mode^^} OK"
+    fi
+    if [ -n "$RETRY_RULE" ]; then
+        if ! retry_codes=$(php "$OUTCOMES" retry "$rule" "$CONFIG_VERSION" "$result"); then
+            echo "Retry rejected: no current matching failed attempt."
+            return 1
+        fi
+        read -r -a codes <<< "$retry_codes"
+        [ "${#codes[@]}" -eq 4 ] || return 1
+        for component_code in "${!codes[@]}"; do
+            if [[ "${codes[$component_code]}" =~ ^[0-9]+$ ]] && [ "${codes[$component_code]}" -ne 0 ]; then
+                codes[$component_code]=pending
+            fi
+        done
+    else
+        if [ "$transition" != yes ]; then echo "OK (${result} - REPEAT; no automatic retry)"; return 0; fi
+        if [ "$actions" == enable ]; then
+            [ -z "$docker_target" ] || [ "$docker_target" == disable ] || codes[0]=pending
+            [ -z "$vm_target" ] || [ "$vm_target" == disable ] || codes[1]=pending
+            codes[2]=pending
+        fi
+        [ "$notifications" != enable ] || codes[3]=pending
+    fi
+    # Revalidate immediately before side effects, still under the notifier lock.
+    if [ "$(php "$OUTCOMES" digest "$CONFIG" "$ACTIONS")" != "$CONFIG_VERSION" ]; then
+        echo "Configuration or action script changed; no actions performed."
+        return 1
+    fi
+    if ! php "$OUTCOMES" begin "$rule" "$CONFIG_VERSION" "$result" "$iface" "${codes[@]}"; then
+        echo "Unable to record automation attempt; no actions performed."
+        return 1
+    fi
+    # Consume the transition before starting side effects. If interrupted, the
+    # running outcome remains visible and is never silently replayed by cron.
+    if [ "$result" == exceeded ]; then touch "$marker" || return 1; else rm -f "$marker" || return 1; fi
+    if [ "${codes[0]}" == pending ]; then
+        docker "$docker_operation" "$docker_target" 2>&1 | logger -t dvm-notify
+        codes[0]="${PIPESTATUS[0]}"
+    fi
+    if [ "${codes[1]}" == pending ]; then
+        if dvm_set_vm_links "$vm_target" "$vm_operation" "$alarm" "$iface"; then codes[1]=0; else codes[1]=1; fi
+    fi
+    if [ "${codes[2]}" == pending ]; then
+        # Docker/VM operations can take time. Revalidate now, and source only a
+        # verified private copy so an editor replacement cannot change the code
+        # between the fingerprint check and Bash reading the file.
+        if [ "$(php "$OUTCOMES" digest "$CONFIG" "$ACTIONS")" != "$CONFIG_VERSION" ]; then
+            echo "Configuration or custom script changed during workload actions; custom code was not run." | logger -t dvm-notify
+            ACTIONS_LOAD_STATUS=75
+        elif [ "$ACTIONS_LOADED" -eq 0 ] && [ -e "$ACTIONS" ]; then
+            if ACTIONS_SNAPSHOT=$(mktemp /tmp/dvm-actions.XXXXXX) && cp -- "$ACTIONS" "$ACTIONS_SNAPSHOT" &&
+               [ "$(php "$OUTCOMES" digest "$CONFIG" "$ACTIONS_SNAPSHOT")" == "$CONFIG_VERSION" ] &&
+               [ "$(php "$OUTCOMES" digest "$CONFIG" "$ACTIONS")" == "$CONFIG_VERSION" ]; then
+                if source "$ACTIONS_SNAPSHOT" 9>&-; then :; else ACTIONS_LOAD_STATUS=$?; fi
+            else
+                echo "Custom script snapshot could not be verified; custom code was not run." | logger -t dvm-notify
+                ACTIONS_LOAD_STATUS=75
+            fi
+            ACTIONS_LOADED=1
+        fi
+        if [ "$ACTIONS_LOAD_STATUS" -ne 0 ]; then codes[2]="$ACTIONS_LOAD_STATUS"; fi
+        if [ "${codes[2]}" == pending ]; then
+            "$custom_function" "$alarm" "$iface" 9>&- 2>&1 | logger -t dvm-user-actions
+            codes[2]="${PIPESTATUS[0]}"
+        fi
+    fi
+    if [ "${codes[0]}" != disabled ]; then
+        if [ "${codes[0]}" == 0 ]; then description+=" Docker container '${docker_target}' ${verb} with success."
+        else description+=" Docker container '${docker_target}' ${verb} with errors (see SYSLOG)."; fi
+    fi
+    if [ "${codes[1]}" != disabled ]; then
+        if [ "${codes[1]}" == 0 ]; then description+=" VM '${vm_target}' ${vm_verb} with success."
+        else description+=" VM '${vm_target}' ${vm_verb} with errors (see SYSLOG)."; fi
+    fi
+    if [ "${codes[2]}" != disabled ]; then
+        if [ "${codes[2]}" == 0 ]; then description+=" User actions executed with success."
+        else description+=" User actions executed with errors (see SYSLOG)."; fi
+    fi
+    if [ "${codes[3]}" == pending ]; then
+        "$NOTIFY" -e "Data Volume Monitor" -s "$notify_subject" -d "$description" -i "$notify_kind"
+        codes[3]=$?
+    fi
+    if ! php "$OUTCOMES" finish "$rule" "$CONFIG_VERSION" "$result" "$iface" "${codes[@]}"; then
+        echo "Automation ran but outcome recording failed; check the system log before retrying."
+        return 1
+    fi
+    for component_code in "${codes[@]}"; do
+        if [[ "$component_code" =~ ^[0-9]+$ ]] && [ "$component_code" -ne 0 ]; then final_status=1; fi
+    done
+    if [ "$final_status" -eq 0 ]; then echo "OK (${result}; automation outcome recorded)."
+    else echo "FAILED (${result}; see Automation Outcomes; explicit retry available)."; fi
+    return "$final_status"
+}
+
+allLimits=("$RXLIMITH" "$RXLIMITD" "$RXLIMITM" "$RXLIMITY" "$TXLIMITH" "$TXLIMITD" "$TXLIMITM" "$TXLIMITY")
+allUnits=("$RXUNITH" "$RXUNITD" "$RXUNITM" "$RXUNITY" "$TXUNITH" "$TXUNITD" "$TXUNITM" "$TXUNITY")
+allBadFiles=("dvm_h_bad_rx_notified" "dvm_d_bad_rx_notified" "dvm_m_bad_rx_notified" "dvm_y_bad_rx_notified" "dvm_h_bad_tx_notified" "dvm_d_bad_tx_notified" "dvm_m_bad_tx_notified" "dvm_y_bad_tx_notified")
+allMetricModes=("rx" "rx" "rx" "rx" "tx" "tx" "tx" "tx")
+allMetricParameters=("h" "d" "m" "y" "h" "d" "m" "y")
+allBadFunctions=("hour_rx_reached" "day_rx_reached" "month_rx_reached" "year_rx_reached" "hour_tx_reached" "day_tx_reached" "month_tx_reached" "year_tx_reached")
+allGoodFunctions=("hour_rx_normal_again" "day_rx_normal_again" "month_rx_normal_again" "year_rx_normal_again" "hour_tx_normal_again" "day_tx_normal_again" "month_tx_normal_again" "year_tx_normal_again")
+allBadDockers=("$RXDOCKERHSTOP" "$RXDOCKERDSTOP" "$RXDOCKERMSTOP" "$RXDOCKERYSTOP" "$TXDOCKERHSTOP" "$TXDOCKERDSTOP" "$TXDOCKERMSTOP" "$TXDOCKERYSTOP")
+allGoodDockers=("$RXDOCKERHSTART" "$RXDOCKERDSTART" "$RXDOCKERMSTART" "$RXDOCKERYSTART" "$TXDOCKERHSTART" "$TXDOCKERDSTART" "$TXDOCKERMSTART" "$TXDOCKERYSTART")
+allBadVMS=("$RXVMHSTOP" "$RXVMDSTOP" "$RXVMMSTOP" "$RXVMYSTOP" "$TXVMHSTOP" "$TXVMDSTOP" "$TXVMMSTOP" "$TXVMYSTOP")
+allGoodVMS=("$RXVMHSTART" "$RXVMDSTART" "$RXVMMSTART" "$RXVMYSTART" "$TXVMHSTART" "$TXVMDSTART" "$TXVMMSTART" "$TXVMYSTART")
+
+echo "--- PRIMARY THRESHOLD CHECKS ---"
+for i in "${!allLimits[@]}"; do
+    dvm_process_rule "primary-${allMetricParameters[$i]}-${allMetricModes[$i]}" 0 "$PRIMARY" "${allMetricParameters[$i]}" "${allMetricModes[$i]}" \
+        "${allLimits[$i]}" "${allUnits[$i]}" "/tmp/${allBadFiles[$i]}" "${allBadDockers[$i]}" "${allGoodDockers[$i]}" \
+        "${allBadVMS[$i]}" "${allGoodVMS[$i]}" "${allBadFunctions[$i]}" "${allGoodFunctions[$i]}" || RUN_EXIT=1
+done
+
+echo "--- SECONDARY THRESHOLD CHECKS ---"
+for slot in 1 2 3 4 5 6; do
+    interface_var="CUSTOM${slot}INTERFACE"; time_var="CUSTOM${slot}TIME"; mode_var="CUSTOM${slot}MODE"
+    limit_var="CUSTOM${slot}LIMIT"; unit_var="CUSTOM${slot}UNIT"
+    stop_var="CUSTOM${slot}STOP"; start_var="CUSTOM${slot}START"
+    vmstop_var="CUSTOM${slot}VMSTOP"; vmstart_var="CUSTOM${slot}VMSTART"
+    case "${!time_var}" in h) human_time=hour;; d) human_time=day;; m) human_time=month;; y) human_time=year;; *) human_time=invalid;; esac
+    dvm_process_rule "secondary-${slot}" "$slot" "${!interface_var}" "${!time_var}" "${!mode_var}" "${!limit_var}" "${!unit_var}" \
+        "/tmp/dvm${slot}_${!interface_var}_${!time_var}_bad_${!mode_var}_notified" "${!stop_var}" "${!start_var}" \
+        "${!vmstop_var}" "${!vmstart_var}" "${human_time}_${!mode_var}_reached" "${human_time}_${!mode_var}_normal_again" || RUN_EXIT=1
+done
+if [ -n "$RETRY_RULE" ] && [ "$RETRY_HANDLED" -ne 1 ]; then echo "Retry rule unavailable."; exit 1; fi
+exit "$RUN_EXIT"

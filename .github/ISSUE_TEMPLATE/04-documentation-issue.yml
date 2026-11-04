@@ -1,0 +1,31 @@
+name: Documentation Issue
+description: Report incorrect, unclear, or missing README or wiki content.
+title: "[Docs]: "
+labels: [documentation, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us improve the [README](https://github.com/alexphillips-dev/Data-Volume-Monitor/blob/dev/README.md) and [wiki](https://github.com/alexphillips-dev/Data-Volume-Monitor/wiki).
+        Remove private information from any examples or screenshots before posting.
+  - type: input
+    id: page
+    attributes:
+      label: Documentation URL
+      description: Link to the README or wiki page. For missing content, link to the closest relevant page.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Incorrect, unclear, or missing content
+      description: Identify the section and explain the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested clarification
+      description: Suggest wording or explain what information would help, if you have a suggestion.
+    validations:
+      required: false

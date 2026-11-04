@@ -1,0 +1,63 @@
+{
+  "binaries": {
+    "vnstat": {
+      "maximum_glibc_symbol": "2.14",
+      "needed": [
+        "libc.so.6",
+        "libm.so.6",
+        "libpthread.so.0",
+        "libsqlite3.so.0"
+      ],
+      "sha256": "0c1e2c8508e92b717a520e7e9ec2e0fc149f641200ed7aa57d192809759736c0"
+    },
+    "vnstatd": {
+      "maximum_glibc_symbol": "2.14",
+      "needed": [
+        "libc.so.6",
+        "libm.so.6",
+        "libpthread.so.0",
+        "libsqlite3.so.0"
+      ],
+      "sha256": "1cc9513fbed5c26111a7d96c31738c720058790028730e27e6c189ea5b32b49a"
+    },
+    "vnstati": {
+      "maximum_glibc_symbol": "2.14",
+      "needed": [
+        "libc.so.6",
+        "libgd.so.3",
+        "libm.so.6",
+        "libpthread.so.0",
+        "libsqlite3.so.0"
+      ],
+      "sha256": "211d9ad4e8f7ef7ada5347708ba1612399363d4c23200116d3020c0c76f7796f"
+    }
+  },
+  "build_inputs": {
+    "gd.txz": {
+      "sha256": "a933c3b3e70e59b42c66a1cfe233d3808b6d0c97de4a77de15fd6420879e91a0",
+      "url": "https://slackware.uk/slackware/slackware64-14.2/slackware64/l/gd-2.2.1-x86_64-1.txz"
+    },
+    "sqlite.txz": {
+      "sha256": "0c54faf804b26a44ae7cf6c5fcd9ada1af38908a101ce1e6795bd1136ee68ecf",
+      "url": "https://slackware.uk/slackware/slackware64-14.2/slackware64/ap/sqlite-3.13.0-x86_64-1.txz"
+    },
+    "zig.tar.xz": {
+      "sha256": "d45312e61ebcc48032b77bc4cf7fd6915c11fa16e4aad116b66c9468211230ea",
+      "url": "https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz"
+    }
+  },
+  "configure": [
+    "--prefix=/usr",
+    "--sysconfdir=/etc",
+    "--localstatedir=/var",
+    "--disable-extra-paths"
+  ],
+  "package": "vnstat-2.14-x86_64-1_dvm.txz",
+  "sha256": "633010e2be9b1860000bfed0c7d748be710b84f30ac9d6a403381745ebaafe55",
+  "source_sha256": "8ba2119b3c6f780775135f9c9fa7236867da67e2f93649f1313319b9cf48f87c",
+  "source_signer": "23EF1DD76E65248FB055201ADAFE84E63D140114",
+  "source_url": "https://humdi.net/vnstat/vnstat-2.14.tar.gz",
+  "target": "x86_64-linux-gnu.2.17 baseline",
+  "toolchain": "Zig 0.13.0 / LLVM 18",
+  "version": "2.14"
+}

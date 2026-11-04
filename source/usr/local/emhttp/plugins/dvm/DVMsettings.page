@@ -1,0 +1,162 @@
+Menu="Utilities"
+Type="xmenu"
+Title="Data Volume Monitor"
+Icon="dvm.png"
+Tag="pie-chart"
+Markdown="false"
+---
+<?
+/* Copyright Derek Macias (parts of code from NUT package)
+ * Copyright macester (parts of code from NUT package)
+ * Copyright gfjardim (parts of code from NUT package)
+ * Copyright SimonF (parts of code from NUT package)
+ * Copyright Mohamed Emad (icon from vnstat-client package)
+ * Copyright desertwitch
+ * Modified 2026-11-04: Data Volume Monitor naming and repository transition.
+ *
+ * Copyright Dan Landon
+ * Copyright Bergware International
+ * Copyright Lime Technology
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License 2
+ * as published by the Free Software Foundation.
+ *
+ * The above copyright notice and this permission notice shall be
+ * included in all copies or substantial portions of the Software.
+ *
+ */
+?>
+<? require_once '/usr/local/emhttp/plugins/dvm/include/dvm_config.php'; ?>
+<p id="dvm_reports_status" role="status" aria-live="polite"></p>
+
+<div>
+<table class="tablesorter shift" border="1">
+<thead>
+<tr><th><strong>Network Interface</strong></th><th colspan="2"><strong>Last 5 Minutes</strong></th><th colspan="2"><strong>Last Hour</strong></th><th colspan="2"><strong>Last Day</strong></th><th colspan="2"><strong>Last Month</strong></th><th colspan="2"><strong>Last Year</strong></th></tr>
+<tr><th></th><th>INBOUND (RX)</th><th>OUTBOUND (TX)</th><th>INBOUND (RX)</th><th>OUTBOUND (TX)</th><th>INBOUND (RX)</th><th>OUTBOUND (TX)</th><th>INBOUND (RX)</th><th>OUTBOUND (TX)</th><th>INBOUND (RX)</th><th>OUTBOUND (TX)</th></tr>
+</thead>
+<tbody class="dvm_lightreport">
+<?if($dvm_config_running):?>
+<tr><td colspan='11' style="text-align:center"><i class="fa fa-spinner fa-spin"></i> <em>Please wait, retrieving information...</em></td></tr>
+<?endif;?>
+</tbody>
+</table>
+</div>
+
+
+<details id="dvm-detailed-reports" style="margin-top:1em;">
+<summary style="cursor:pointer;"><strong>Detailed Reports</strong></summary>
+<p>Expand a period below to view its detailed report.</p>
+<div>
+<table class="tablesorter">
+<thead><tr><th><strong>Network Interface</strong></th><th><strong>Report (Summary)</strong></th><th><strong>Report (5 Minutes)</strong></th><th><strong>Report (Hours)</strong></th><th><strong>Report (Days)</strong></th><th><strong>Report (Months)</strong></th><th><strong>Report (Years)</strong></th></tr></thead>
+<tbody class="dvm_report">
+<?if($dvm_config_running):?>
+<tr><td colspan='7' style="text-align:center"><i class="fa fa-spinner fa-spin"></i> <em>Please wait, retrieving information...</em></td></tr>
+<?endif;?>
+</tbody>
+</table>
+</div>
+</details>
+
+<script src="/plugins/dvm/js/dvm-poll.js?v=<?=hash_file('sha256', '/usr/local/emhttp/plugins/dvm/js/dvm-poll.js');?>"></script>
+<script type="text/javascript">
+<?if($dvm_config_running):?>
+function dvmMatchesFilter(filterArray, spanTexts, tdText) {
+    return filterArray.some(function (filter) {
+        if (filter.includes('+') || filter.includes('!')) {
+            let [includePart, excludePart] = filter.split('!');
+            let includeKeywords = includePart ? includePart.split('+').map(k => k.trim()) : [];
+            let excludeKeywords = excludePart ? excludePart.split('+').map(k => k.trim()) : [];
+            let matchesInclusion = includeKeywords.every(keyword => spanTexts.some(name => name === keyword));
+            let matchesExclusion = excludeKeywords.length > 0 && excludeKeywords.every(keyword => spanTexts.some(name => name === keyword));
+            return matchesInclusion && !matchesExclusion;
+        }
+        return tdText === filter || spanTexts.some(name => name === filter);
+    });
+}
+var dvmReportsPoll = null;
+function getDVMReports() {
+    let filters = <?=json_encode($dvm_config_filters, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE);?>;
+    let filterArray = filters.split(";").map(filter => filter.trim()).filter(f => f);
+
+    if (!dvmReportsPoll) dvmReportsPoll = DVMPoll.create({
+        key: 'getDVMReports', timerStore: timers,
+        interval: <?=max(abs(isset($display['refresh']) ? $display['refresh'] : 0),(30 * 1000))?>,
+        requests: [{key:'report', data:{mode:'report'}}, {key:'lightreport', data:{mode:'lightreport'}}],
+        isActive: function () { return $('.dvm_report').length > 0; },
+        render: function (responses) {
+            var data = responses.report;
+
+            if (data && data.success && data.success.response) {
+                let $tempContainer = $('<div>').html(data.success.response);
+
+                if (filterArray.length > 0) {
+                    $tempContainer.find('tr').each(function () {
+                        let $tr = $(this);
+                        let $firstTd = $tr.find('td').first();
+                        let tdText = $firstTd.contents().not($firstTd.children()).text().trim();
+
+                        let spanTexts = $firstTd.find('span span').map(function () {
+                            return $(this).text().trim();
+                        }).get();
+
+                        let rowMatches = dvmMatchesFilter(filterArray, spanTexts, tdText);
+
+                        if (!rowMatches) {
+                            $tr.remove();
+                        }
+                    });
+                }
+
+                $('.dvm_report').html($tempContainer.html());
+            }
+            var data = responses.lightreport;
+
+            if (data && data.success && data.success.response) {
+                let $tempContainer = $('<div>').html(data.success.response);
+
+                if (filterArray.length > 0) {
+                    $tempContainer.find('tr').each(function () {
+                        let $tr = $(this);
+                        let $firstTd = $tr.find('td').first();
+                        let tdText = $firstTd.contents().not($firstTd.children()).text().trim();
+
+                        let spanTexts = $firstTd.find('span span').map(function () {
+                            return $(this).text().trim();
+                        }).get();
+
+                        let rowMatches = dvmMatchesFilter(filterArray, spanTexts, tdText);
+
+                        if (!rowMatches) {
+                            $tr.remove();
+                        }
+                    });
+                }
+
+                $('.dvm_lightreport').html($tempContainer.html());
+            }
+        },
+        onState: function (state) {
+            DVMPoll.annotate($('.dvm_report, .dvm_lightreport'), $('#dvm_reports_status'), state);
+        }
+    });
+    dvmReportsPoll.start();
+}
+<?endif;?>
+
+$(function() {
+
+    <?if($dvm_config_running):?>
+    getDVMReports();
+    <?endif;?>
+
+    showStatus('vnstatd');
+
+    if ( typeof caPluginUpdateCheck === "function" ) {
+        caPluginUpdateCheck("dvm.plg",{name:"Data Volume Monitor"});
+    }
+
+});
+</script>

@@ -1,0 +1,71 @@
+#!/bin/bash
+set -e
+#
+# Copyright Derek Macias (parts of code from NUT package)
+# Copyright macester (parts of code from NUT package)
+# Copyright gfjardim (parts of code from NUT package)
+# Copyright SimonF (parts of code from NUT package)
+# Copyright Mohamed Emad (icon from vnstat-client package)
+# Copyright desertwitch
+# Modified 2026-11-04: Data Volume Monitor naming and repository transition.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License 2
+# as published by the Free Software Foundation.
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+BOOT="/boot/config/plugins/dvm"
+DOCROOT="/usr/local/emhttp/plugins/dvm"
+
+echo "Making sure all existing DVM services are stopped (before config and db reset)..."
+if [ ! -x /etc/rc.d/rc.vnstat ] || ! /etc/rc.d/rc.vnstat stop; then
+    echo "ERROR: Could not verify that DVM stopped; reset cancelled." >&2
+    exit 1
+fi
+
+DATABASEDIR=$(/etc/rc.d/rc.vnstat database_path) || exit 1
+php "$DOCROOT/include/dvm_outcome_store.php" clear || exit $?
+/etc/rc.d/rc.vnstat remove_database || exit 1
+
+echo "Deleting existing configuration files and folders..."
+rm -f $BOOT/dvm.cfg
+rm -f $BOOT/vnstat.db $BOOT/vnstat.db.path $BOOT/vnstat.previous.tar
+rm -rf /etc/vnstat
+rm -rf $BOOT/vnstat
+rm -f /tmp/dvm*notified
+
+echo "Recreating configuration folders..."
+if [ ! -d /etc/vnstat ]; then
+    mkdir /etc/vnstat
+fi
+
+if [ ! -d $BOOT/vnstat ]; then
+    mkdir $BOOT/vnstat
+fi
+
+echo "Pulling default configuration files from package..."
+cp -f $DOCROOT/default.cfg $BOOT/dvm.cfg
+for config_file in vnstat.conf dvm-custom-alarms.sh dvm-user-actions.sh; do
+    cp -f "$DOCROOT/vnstat/$config_file" "$BOOT/vnstat/$config_file"
+done
+printf '\nDatabaseDir "%s"\n' "$DATABASEDIR" >> "$BOOT/vnstat/vnstat.conf"
+for config_file in "$BOOT"/vnstat/*.conf "$BOOT"/vnstat/*.sh; do
+    [ -f "$config_file" ] && [ ! -L "$config_file" ] || continue
+    cp -f -- "$config_file" "/etc/vnstat/${config_file##*/}"
+done
+
+echo "Setting up permissions on configuration locations..."
+chown root:root /etc/vnstat
+chmod 755 /etc/vnstat
+chown root:root /etc/vnstat/*
+chmod 644 /etc/vnstat/*
+chmod 755 /etc/vnstat/dvm-custom-alarms.sh
+chmod 755 /etc/vnstat/dvm-user-actions.sh
+
+if [ -x /etc/rc.d/rc.vnstat ]; then
+    /etc/rc.d/rc.vnstat write_config 1>/dev/null
+fi
+
+echo "DVM settings are reset to defaults except the storage location; the database was wiped."

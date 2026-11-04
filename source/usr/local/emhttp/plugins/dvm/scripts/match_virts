@@ -1,0 +1,48 @@
+#!/bin/bash
+#
+# Copyright Derek Macias (parts of code from NUT package)
+# Copyright macester (parts of code from NUT package)
+# Copyright gfjardim (parts of code from NUT package)
+# Copyright SimonF (parts of code from NUT package)
+# Copyright Mohamed Emad (icon from vnstat-client package)
+# Copyright Dicho (parts of code for Docker interface detection)
+# Copyright desertwitch
+# Modified 2026-11-04: preserve VM names and match complete peer interface indexes.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License 2
+# as published by the Free Software Foundation.
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+
+for container in $(docker ps --format '{{.Names}}' 2>/dev/null); do
+        PID="$(docker inspect "${container}" --format "{{.State.Pid}}" 2>/dev/null)"
+        while read -r iface id; do
+                [[ "${iface}" == "lo" ]] && continue
+                veth="$(ip -br addr 2>/dev/null | sed -nre "s/^(veth[^[:space:]@]+)@if${id}([[:space:]].*|$)/\1/p" 2>/dev/null)"
+                if [ -n "${container}" ] && [ -n "${veth}" ] && [ -e "/sys/class/net/${veth}" ]; then
+                        echo "${veth}:${container}"
+                fi
+        done < <(</proc/"${PID}"/net/igmp awk '/^[0-9]+/{print $2 " " $1;}' 2>/dev/null)
+done
+
+for network in $(docker network ls -q 2>/dev/null); do
+        containers="$(docker network inspect "${network}" --format='{{range .Containers}}{{println .Name}}{{end}}' 2>/dev/null)"
+        for container in $containers; do
+                if [ -n "${container}" ] && [ -n "${network}" ] && [ -e "/sys/class/net/br-${network}" ]; then
+                        echo "br-${network}:${container}"
+                fi
+        done
+done
+
+while IFS= read -r vm; do
+        [ -n "$vm" ] || continue
+        ifaces="$(virsh domiflist "${vm}" 2>/dev/null | awk 'NR>2{ print $1 }' 2>/dev/null)"
+        for iface in $ifaces; do
+                if [ -n "${vm}" ] && [ -n "${iface}" ] && [ -e "/sys/class/net/${iface}" ]; then
+                        echo "${iface}:${vm}"
+                fi
+        done
+done < <(virsh list --name 2>/dev/null)

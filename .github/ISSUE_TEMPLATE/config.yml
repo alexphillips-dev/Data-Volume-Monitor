@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Read the Wiki
+    url: https://github.com/alexphillips-dev/Data-Volume-Monitor/wiki
+    about: Setup, release channels, configuration, troubleshooting, and host acceptance steps.

@@ -1,0 +1,387 @@
+#!/bin/bash
+#
+# Copyright Derek Macias (parts of code from NUT package)
+# Copyright macester (parts of code from NUT package)
+# Copyright gfjardim (parts of code from NUT package)
+# Copyright SimonF (parts of code from NUT package)
+# Copyright Mohamed Emad (icon from vnstat-client package)
+# Copyright desertwitch
+# Modified 2026-11-04: Data Volume Monitor naming and repository transition.
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License 2
+# as published by the Free Software Foundation.
+#
+# The above copyright notice and this permission notice shall be
+# included in all copies or substantial portions of the Software.
+#
+# Modified by Mario Preksavec <mario@slackware.hr>
+
+CONFIGFILE=/etc/vnstat/vnstat.conf
+DAEMON=vnstatd
+
+PLGPATH="/boot/config/plugins/dvm"
+DOCROOT="/usr/local/emhttp/plugins/dvm"
+CONFIG=$PLGPATH/dvm.cfg
+
+[ -e "$CONFIG" ] && source $CONFIG
+
+load_paths() {
+  local effective
+  effective=$("$DOCROOT/scripts/vnstat_paths" "$CONFIGFILE") || return 1
+  local paths=()
+  mapfile -t paths <<< "$effective"
+  [ "${#paths[@]}" -eq 2 ] && [[ "${paths[0]}" == /* ]] && [[ "${paths[1]}" == /* ]] || return 1
+  DATABASEDIR=${paths[0]%/}
+  [ -n "$DATABASEDIR" ] || DATABASEDIR=/
+  DATABASEFILE="${DATABASEDIR%/}/vnstat.db"
+}
+
+check_daemon() {
+  local status=0
+  pgrep -x "$DAEMON" >/dev/null 2>&1 || status=$?
+  case "$status" in
+    0) DVM_RUNNING=1 ;;
+    1) DVM_RUNNING=0 ;;
+    *) echo "ERROR: Unable to determine whether the DVM daemon is running." >&2; return 1 ;;
+  esac
+}
+
+vnstat_start() {
+  check_daemon || return 1
+  if [ "$DVM_RUNNING" -eq 1 ]; then
+    echo "DVM service is already running."
+    return 0
+  fi
+  if [ ! -x /usr/sbin/vnstatd ] || [ ! -r "$CONFIGFILE" ]; then
+    echo "ERROR: DVM daemon or configuration is unavailable." >&2
+    return 1
+  fi
+  echo "Starting DVM service..."
+  /usr/sbin/vnstatd --config "$CONFIGFILE" --daemon || return $?
+  for ((attempt=0; attempt<5; attempt++)); do
+    check_daemon || return 1
+    if [ "$DVM_RUNNING" -eq 1 ]; then
+      rm -f /tmp/dvm*notified
+      return 0
+    fi
+    sleep 1
+  done
+  echo "ERROR: DVM daemon did not remain running after startup." >&2
+  return 1
+}
+
+vnstat_stop() {
+  check_daemon || return 1
+  if [ "$DVM_RUNNING" -eq 1 ]; then
+    echo "Stopping the DVM service..."
+    local signal_status=0
+    killall "$DAEMON" 2>/dev/null || signal_status=$?
+    check_daemon || return 1
+    if [ "$signal_status" -ne 0 ] && [ "$DVM_RUNNING" -eq 1 ]; then
+      echo "ERROR: Could not signal the DVM daemon to stop." >&2
+      return 1
+    fi
+    for ((attempt=0; attempt<30 && DVM_RUNNING==1; attempt++)); do
+      sleep 1
+      check_daemon || return 1
+    done
+    if [ "$DVM_RUNNING" -eq 1 ]; then
+      killall -9 "$DAEMON" 2>/dev/null || return 1
+      sleep 1
+      check_daemon || return 1
+      if [ "$DVM_RUNNING" -eq 1 ]; then
+        echo "ERROR: DVM daemon is still running; operation cancelled." >&2
+        return 1
+      fi
+    fi
+  else
+    echo "No running DVM service has been found!"
+  fi
+  rm -f /tmp/dvm*notified
+  return 0
+}
+
+vnstat_status() {
+  check_daemon || return 2
+  if [ "$DVM_RUNNING" -eq 1 ]; then
+    echo "DVM service is running."
+    return 0
+  fi
+  echo "DVM service is not running."
+  return 1
+}
+
+vnstat_restart() {
+  echo "Restarting the DVM service..."
+  vnstat_stop || return $?
+  write_config || return $?
+  vnstat_start
+}
+
+backup_db() {
+  if [ "$BACKUPDB" == "enable" ] && [ -f "$DATABASEFILE" ]; then
+    echo "Backing up the DVM database to the flash drive..."
+    local database_stage="$PLGPATH/vnstat.db.tmp.$$"
+    local metadata_stage="$PLGPATH/vnstat.db.path.tmp.$$"
+    local digest
+    if ! cp -f "$DATABASEFILE" "$database_stage"; then
+      rm -f -- "$database_stage"
+      return 1
+    fi
+    digest=$(sha256sum < "$database_stage") || { rm -f -- "$database_stage"; return 1; }
+    digest=${digest%% *}
+    if ! printf '%s\n%s\n' "$DATABASEFILE" "$digest" > "$metadata_stage"; then
+      rm -f -- "$database_stage" "$metadata_stage"
+      return 1
+    fi
+    if ! preserve_previous_backup; then
+      rm -f -- "$database_stage" "$metadata_stage"
+      return 1
+    fi
+    # Publish metadata first. A failure between these renames leaves a checksum
+    # mismatch, which restore rejects instead of assigning traffic to a wrong path.
+    if ! mv -f -- "$metadata_stage" "$PLGPATH/vnstat.db.path"; then
+      rm -f -- "$database_stage" "$metadata_stage"
+      return 1
+    fi
+    if ! mv -f -- "$database_stage" "$PLGPATH/vnstat.db"; then
+      rm -f -- "$database_stage"
+      return 1
+    fi
+  fi
+}
+
+backup_pair_valid() {
+  local database=$1 metadata_file=$2 allow_legacy=${3:-0}
+  local digest metadata=()
+  [ -f "$database" ] && [ ! -L "$database" ] || return 1
+  digest=$(sha256sum < "$database") || return 1
+  DVM_BACKUP_DIGEST=${digest%% *}
+  if [ -f "$metadata_file" ] && [ ! -L "$metadata_file" ]; then
+    mapfile -t metadata < "$metadata_file" || return 1
+    [ "${#metadata[@]}" -eq 2 ] && [[ "${metadata[1]}" =~ ^[a-f0-9]{64}$ ]] || return 1
+    [ "$DVM_BACKUP_DIGEST" == "${metadata[1]}" ] || return 1
+    DVM_BACKUP_PATH=${metadata[0]}
+  elif [ "$allow_legacy" -eq 1 ] && [ ! -e "$metadata_file" ] && [ ! -L "$metadata_file" ]; then
+    # Historical untagged backups were always made from the stock location.
+    DVM_BACKUP_PATH=/var/lib/vnstat/vnstat.db
+  else
+    return 1
+  fi
+}
+
+preserve_previous_backup() {
+  [ -e "$PLGPATH/vnstat.db" ] || return 0
+  if ! backup_pair_valid "$PLGPATH/vnstat.db" "$PLGPATH/vnstat.db.path" 1; then
+    echo "WARNING: Current DVM backup is invalid; retaining the previous generation unchanged." >&2
+    return 0
+  fi
+  local previous_path=$DVM_BACKUP_PATH previous_digest=$DVM_BACKUP_DIGEST
+  local stage_dir previous_stage="$PLGPATH/vnstat.previous.tar.tmp.$$"
+  stage_dir=$(mktemp -d "$PLGPATH/.dvm-previous.XXXXXX") || return 1
+  local status=0
+  cp -f -- "$PLGPATH/vnstat.db" "$stage_dir/vnstat.db" || status=1
+  if [ "$status" -eq 0 ]; then
+    printf '%s\n%s\n' "$previous_path" "$previous_digest" > "$stage_dir/vnstat.db.path" || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    backup_pair_valid "$stage_dir/vnstat.db" "$stage_dir/vnstat.db.path" || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    tar -cf - -C "$stage_dir" vnstat.db vnstat.db.path > "$previous_stage" || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    mv -f -- "$previous_stage" "$PLGPATH/vnstat.previous.tar" || status=1
+  fi
+  rm -f -- "$stage_dir/vnstat.db" "$stage_dir/vnstat.db.path" "$previous_stage"
+  rmdir -- "$stage_dir"
+  return "$status"
+}
+
+restore_database_from() {
+  local source_file=$1 expected_digest=$2 restore_stage digest
+  [ ! -e "$DATABASEFILE" ] && [ ! -L "$DATABASEFILE" ] || return 0
+  mkdir -p "$DATABASEDIR" || return 1
+  restore_stage=$(mktemp "$DATABASEDIR/.vnstat-restore.XXXXXX") || return 1
+  local status=0
+  cp -f -- "$source_file" "$restore_stage" || status=1
+  if [ "$status" -eq 0 ]; then
+    digest=$(sha256sum < "$restore_stage") || status=1
+    [ "${digest%% *}" == "$expected_digest" ] || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    chown root:root "$restore_stage" && chmod 644 "$restore_stage" || status=1
+  fi
+  if [ "$status" -eq 0 ]; then
+    # Keep a runtime database that appeared while the verified copy was staged.
+    mv -n -- "$restore_stage" "$DATABASEFILE" || status=1
+  fi
+  rm -f -- "$restore_stage"
+  return "$status"
+}
+
+restore_db() {
+  [ "$BACKUPDB" == "enable" ] && [ ! -e "$DATABASEFILE" ] && [ ! -L "$DATABASEFILE" ] || return 0
+  local invalid=0
+  if [ -e "$PLGPATH/vnstat.db" ] || [ -L "$PLGPATH/vnstat.db" ]; then
+    if backup_pair_valid "$PLGPATH/vnstat.db" "$PLGPATH/vnstat.db.path" 1; then
+      if [ "$DVM_BACKUP_PATH" == "$DATABASEFILE" ]; then
+        echo "Restoring the current verified DVM database backup..."
+        restore_database_from "$PLGPATH/vnstat.db" "$DVM_BACKUP_DIGEST"
+        return $?
+      fi
+    else
+      invalid=1
+    fi
+  fi
+  if [ -f "$PLGPATH/vnstat.previous.tar" ] && [ ! -L "$PLGPATH/vnstat.previous.tar" ]; then
+    local stage_dir status=0 restored=0
+    stage_dir=$(mktemp -d "$PLGPATH/.dvm-restore.XXXXXX") || return 1
+    # Extract only the two named streams; no archive paths are materialized.
+    tar -xOf - vnstat.db < "$PLGPATH/vnstat.previous.tar" > "$stage_dir/vnstat.db" 2>/dev/null || status=1
+    tar -xOf - vnstat.db.path < "$PLGPATH/vnstat.previous.tar" > "$stage_dir/vnstat.db.path" 2>/dev/null || status=1
+    if [ "$status" -eq 0 ]; then
+      backup_pair_valid "$stage_dir/vnstat.db" "$stage_dir/vnstat.db.path" || status=1
+    fi
+    if [ "$status" -eq 0 ] && [ "$DVM_BACKUP_PATH" == "$DATABASEFILE" ]; then
+      echo "Restoring the previous verified DVM database backup..."
+      restore_database_from "$stage_dir/vnstat.db" "$DVM_BACKUP_DIGEST" || status=1
+      restored=1
+    fi
+    rm -f -- "$stage_dir/vnstat.db" "$stage_dir/vnstat.db.path"
+    rmdir -- "$stage_dir"
+    if [ "$restored" -eq 1 ]; then return "$status"; fi
+    [ "$status" -eq 0 ] || invalid=1
+  fi
+  if [ "$invalid" -eq 1 ]; then
+    echo "ERROR: No verified DVM backup matches the configured database location; restoration cancelled." >&2
+    return 1
+  fi
+  return 0
+}
+
+remove_database() {
+  load_paths || return 1
+  # Never recursively remove a user-selected directory or unrelated files.
+  rm -f -- "$DATABASEFILE" "$DATABASEFILE-wal" "$DATABASEFILE-shm" "$DATABASEFILE-journal"
+}
+
+write_config() {
+  load_paths || return 1
+  if [ ! -L /etc/vnstat.conf ]; then
+    ln -sf $CONFIGFILE /etc/vnstat.conf || return 1
+  fi
+
+  if [ ! -d $PLGPATH/vnstat ]; then
+    mkdir $PLGPATH/vnstat || return 1
+  fi
+
+  echo "Writing DVM configuration..."
+
+  cp -f $CONFIG /etc/vnstat/dvm.cfg || return 1
+  for config_file in /etc/vnstat/*.conf /etc/vnstat/*.sh; do
+    [ -f "$config_file" ] && [ ! -L "$config_file" ] || continue
+    cp -f -- "$config_file" "$PLGPATH/vnstat/${config_file##*/}" || return 1
+  done
+
+  if [ "$BACKUPDB" == "enable" ]; then
+    "$DOCROOT/scripts/install_shutdown_hook" || return 1
+
+    restore_db || return 1
+  else
+    "$DOCROOT/scripts/remove_shutdown_hook" || return 1
+  fi
+
+  if [ "$GOODNOTIFY" == "enable" ] || [ "$BADNOTIFY" == "enable" ] || [ "$GOODACTIONS" == "enable" ] || [ "$BADACTIONS" == "enable" ]; then
+    if [ ! -f /boot/config/plugins/dynamix/dvm-notify.cron ]; then
+      echo "Adding DVM notification and user action service to crontab..."
+    fi
+    cp -f $DOCROOT/misc/dvm-notify.cron /boot/config/plugins/dynamix/dvm-notify.cron || return 1
+  else
+    if [ -f /boot/config/plugins/dynamix/dvm-notify.cron ]; then
+      echo "Removing DVM notification and user action service from crontab..."
+      rm -f /boot/config/plugins/dynamix/dvm-notify.cron
+      rm -f /tmp/dvm*notified
+    fi
+  fi
+
+  if [ ! "$CRONINT" == "disable" ]; then
+    if [ ! -f /boot/config/plugins/dynamix/dvm-custom-alarms.cron ]; then
+      echo "Adding DVM custom alarms script to crontab (${CRONINT})..."
+    fi
+    cp -f $DOCROOT/misc/dvm-custom-alarms.cron /boot/config/plugins/dynamix/dvm-custom-alarms.cron || return 1
+    if [ "$CRONINT" == "01min" ]; then
+      sleep 1
+    elif [ "$CRONINT" == "15min" ]; then
+      sed -i '/dvm-custom-alarms/s,^\*,*/15,' /boot/config/plugins/dynamix/dvm-custom-alarms.cron || return 1
+      sleep 1
+    elif [ "$CRONINT" == "30min" ]; then
+      sed -i '/dvm-custom-alarms/s,^\*,*/30,' /boot/config/plugins/dynamix/dvm-custom-alarms.cron || return 1
+      sleep 1
+    elif [ "$CRONINT" == "45min" ]; then
+      printf '%s\n' '# Data Volume Monitor Custom Alarms Script:' '* * * * * /usr/local/emhttp/plugins/dvm/scripts/run_custom_alarms_45 > /dev/null 2>&1' > /boot/config/plugins/dynamix/dvm-custom-alarms.cron || return 1
+      sleep 1
+    elif [ "$CRONINT" == "60min" ]; then
+      sed -i '/dvm-custom-alarms/s,^\*,0,' /boot/config/plugins/dynamix/dvm-custom-alarms.cron || return 1
+      sleep 1
+    else
+      sed -i '/dvm-custom-alarms/s,^\*,*/30,' /boot/config/plugins/dynamix/dvm-custom-alarms.cron || return 1
+      sleep 1
+    fi
+  else
+    if [ -f /boot/config/plugins/dynamix/dvm-custom-alarms.cron ]; then
+      echo "Removing DVM custom alarms script from crontab..."
+      rm -f /boot/config/plugins/dynamix/dvm-custom-alarms.cron
+    fi
+  fi
+
+  if [ -d /etc/vnstat ]; then
+      echo "Updating permissions for DVM..."
+      chown root:root /etc/vnstat || return 1
+      chmod 755 /etc/vnstat || return 1
+      chown root:root /etc/vnstat/* || return 1
+      chmod 644 /etc/vnstat/* || return 1
+      chmod 755 /etc/vnstat/dvm-custom-alarms.sh || return 1
+      chmod 755 /etc/vnstat/dvm-user-actions.sh || return 1
+  fi
+
+  update_cron || return 1
+  sleep 1
+}
+
+case "$1" in
+  'start')
+    write_config || exit $?
+    vnstat_start
+    ;;
+  'stop')
+    vnstat_stop
+    ;;
+  'restart'|'reload')
+    vnstat_restart
+    ;;
+  'database_path')
+    load_paths || exit $?
+    printf '%s\n' "$DATABASEDIR"
+    ;;
+  'remove_database')
+    vnstat_stop || exit $?
+    remove_database
+    ;;
+  'status')
+    vnstat_status
+    ;;
+  'write_config')
+    write_config
+    ;;
+  'backup_db')
+    vnstat_stop || exit $?
+    write_config || exit $?
+    backup_db
+    ;;
+  *)
+    echo "Usage: $0 {start|stop|restart|reload|status|write_config|backup_db|database_path|remove_database}"
+    exit 1
+    ;;
+esac
