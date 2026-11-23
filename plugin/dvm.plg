@@ -3,21 +3,24 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "dvm">
 <!ENTITY author    "alexphillips-dev">
-<!ENTITY version   "2026.11.04.12">
+<!ENTITY version   "2026.11.23.01">
 <!ENTITY launch    "Settings/DVMsettings">
 <!ENTITY gitURL    "https://raw.githubusercontent.com/alexphillips-dev/Data-Volume-Monitor/dev">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
 <!ENTITY pkgURL    "&gitURL;/packages">
 <!ENTITY plgPATH   "/boot/config/plugins/&name;">
-<!ENTITY plgNAME   "dvm-2026.11.04.12-x86_64-1">
-<!ENTITY plgMD5    "c9bdf81fb7ef79b925231c22d9604576">
+<!ENTITY plgNAME   "dvm-2026.11.23.01-x86_64-1">
+<!ENTITY plgMD5    "7810d208452d371b892ea4cb380e5b2d">
 <!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
 ]>
 
-<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://github.com/alexphillips-dev/Data-Volume-Monitor/issues" min="6.8.3">
+<PLUGIN name="&name;" author="&author;" version="&version;" launch="&launch;" pluginURL="&pluginURL;" support="https://forums.unraid.net/topic/201172-plugin-data-volume-monitor/" min="6.8.3">
 
 <CHANGES>
 ## Data Volume Monitor
+###2026.11.23.01
+- update: shorten the description shown on the Unraid Plugins page.
+- update: link Support Thread to the Data Volume Monitor topic on the Unraid forums.
 ###2026.11.04.12
 - development: synchronize the first stable release 2026.11.04.11 and its comprehensive release documentation.
 - build: restore dev-channel installer/download/update URLs and packaged Development version metadata after stable promotion; retain the same application code.
