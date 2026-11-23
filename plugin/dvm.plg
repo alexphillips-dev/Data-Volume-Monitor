@@ -3,14 +3,14 @@
 <!DOCTYPE PLUGIN [
 <!ENTITY name      "dvm">
 <!ENTITY author    "alexphillips-dev">
-<!ENTITY version   "2026.11.23.02">
+<!ENTITY version   "2026.11.23.03">
 <!ENTITY launch    "Settings/DVMsettings">
-<!ENTITY gitURL    "https://raw.githubusercontent.com/alexphillips-dev/Data-Volume-Monitor/dev">
+<!ENTITY gitURL    "https://raw.githubusercontent.com/alexphillips-dev/Data-Volume-Monitor/main">
 <!ENTITY pluginURL "&gitURL;/plugin/&name;.plg">
 <!ENTITY pkgURL    "&gitURL;/packages">
 <!ENTITY plgPATH   "/boot/config/plugins/&name;">
-<!ENTITY plgNAME   "dvm-2026.11.23.02-x86_64-1">
-<!ENTITY plgMD5    "604db85dac8706990a13aec11cfbd53c">
+<!ENTITY plgNAME   "dvm-2026.11.23.03-x86_64-1">
+<!ENTITY plgMD5    "06e9e7dc29a162268c4225e7d8e1ac7c">
 <!ENTITY emhttp    "/usr/local/emhttp/plugins/&name;">
 ]>
 
@@ -18,6 +18,9 @@
 
 <CHANGES>
 ## Data Volume Monitor
+###2026.11.23.03
+- Clarify the Plugins tab description with interface traffic history, usage alerts, and threshold actions for Docker containers and VMs.
+- Remove documentation links from the description and point Support Thread to the Data Volume Monitor topic on the Unraid forums.
 ###2026.11.23.02
 - update: describe traffic history, alerts, and threshold actions in the Plugins listing and remove the documentation links from the description.
 ###2026.11.23.01
