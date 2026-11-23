@@ -1,5 +1,3 @@
 **Data Volume Monitor**
 
-Track network usage with vnStat and set usage thresholds for alerts and automated actions.
-
-[Stable docs](https://github.com/alexphillips-dev/Data-Volume-Monitor/tree/main) · [Development docs](https://github.com/alexphillips-dev/Data-Volume-Monitor/tree/dev) · [Wiki](https://github.com/alexphillips-dev/Data-Volume-Monitor/wiki)
+Monitor upload and download usage by network interface with vnStat. View traffic history and set thresholds to send alerts or automate actions for Docker containers and VMs.

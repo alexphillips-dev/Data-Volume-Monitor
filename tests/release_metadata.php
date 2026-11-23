@@ -58,9 +58,6 @@ try {
     ob_start(); eval('?>' . $row); $html = ob_get_clean();
     release_check(strpos($html, 'Unknown (channel unavailable)') !== false && strpos($html, '<img') === false, 'Actual settings row accepts unsafe release metadata');
     $checks += 2;
-    $readme = file_get_contents($root . '/README.md');
-    release_check(strpos($readme, '/tree/main') !== false && strpos($readme, '/tree/dev') !== false, 'Installed documentation must link both channels');
-    $checks++;
     echo 'PASS: ' . $checks . " release metadata and settings display checks\n";
 } finally {
     if (is_file($path) || is_link($path)) unlink($path);
